@@ -28,6 +28,9 @@ public class Cube {
     private int activeReadersCounter;
     // guards access to shared variables
     private final Semaphore lock;
+    // number of plane of which modifying threads were last let in to the critical section. This variable helps to
+    // mitigate the problem of starvation
+    private int lastModifyingGroupNumber = -1;
 
     public Cube(int size, BiConsumer<Integer, Integer> beforeRotation, BiConsumer<Integer, Integer> afterRotation, Runnable beforeShowing, Runnable afterShowing) {
         this.beforeRotation = beforeRotation;
@@ -80,8 +83,28 @@ public class Cube {
         exitSectionRotate(plane.first(), plane.second());
     }
 
-    private void entrySectionShow() {
-
+    private void entrySectionShow() throws InterruptedException {
+        lock.acquire();
+        // if there is any modifying thread that is waiting to enter the critical section, or that is working, then the
+        // reading thread must wait
+        if (activeModifiersCounter > 0 || isAnyModifierWaiting()) {
+            waitingReadersCounter++;
+            lock.release();
+            // wait on a semaphore
+            readingSemaphore.acquire();
+            // at this point the reading thread is waken up, ready to perform reading
+            waitingReadersCounter--;
+        }
+        activeReadersCounter++;
+        // modifying thread wakes up one reading thread. If there are more than 1 waiting reading threads, they are
+        // waken by other reading threads in a cascading manner
+        if (waitingReadersCounter > 0) {
+            readingSemaphore.release();
+        }
+        else {
+            // no more reading threads are waiting, give back the lock
+            lock.release();
+        }
     }
 
     private String criticalSectionShow() {
@@ -91,12 +114,45 @@ public class Cube {
         return cubeRepresentation;
     }
 
-    private void exitSectionShow() {
-
+    private void exitSectionShow() throws InterruptedException {
+        lock.acquire();
+        activeReadersCounter--;
+        // if this is the last reading thread to exit the critical section and there is any waiting modifying thread,
+        // then wake up the modifying thread (selected with fairness)
+        if (activeReadersCounter == 0 && isAnyModifierWaiting()) {
+            int modifiersGroupToWakeUp = updateAndGetLastModifyingGroupNumber();
+            // at this point we know that there is at least 1 modifying thread from modifiersGroupToWakeUp group that
+            // is waiting to enter the critical section. This thread inherits the lock
+            wakeUpThreadFromGivenGroup(modifiersGroupToWakeUp, 0);
+        }
+        else {
+            lock.release();
+        }
     }
 
-    private void entrySectionRotate(int planeNumber, int depth) {
-
+    private void entrySectionRotate(int planeNumber, int depth) throws InterruptedException {
+        lock.acquire();
+        // if there is any active reading or modifying thread, then the thread must wait on a group semaphore
+        if (activeReadersCounter + activeModifiersCounter > 0) {
+            waitingModifiersCounter[planeNumber]++;
+            lock.release();
+            // wait on the group semaphore (on proper depth)
+            modificationSemaphores[planeNumber][depth].acquire();
+            // at this point the modifying thread was waken up
+            waitingModifiersCounter[planeNumber]--;
+            activeModifiersCounter++;
+            // try to wake up some thread from the same group, but with greater depth
+            boolean hasWakenGroupThread = wakeUpThreadFromGivenGroup(planeNumber, depth + 1);
+            if (!hasWakenGroupThread) {
+                // current thread was the last one to be waken up, give back the lock
+                lock.release();
+            }
+        }
+        else {
+            // no other thread is performing any operation on the cube, safe to enter the critical section
+            activeModifiersCounter++;
+            lock.release();
+        }
     }
 
     private void criticalSectionRotate(int side, int layer) {
@@ -105,8 +161,67 @@ public class Cube {
         afterRotation.accept(side, layer);
     }
 
-    private void exitSectionRotate(int planeNumber, int depth) {
+    private void exitSectionRotate(int planeNumber, int depth) throws InterruptedException {
+        lock.acquire();
+        activeModifiersCounter--;
+        if (activeModifiersCounter == 0)
+        {
+            // current thread is the last modifying thread from its group that is leaving the critical section. If any
+            // reading thread is waiting, then wake it up (other reading threads will be waken up is a cascading manner)
+            if (waitingReadersCounter > 0) {
+                readingSemaphore.release(); // the lock is inherited
+            }
+            else if (isAnyModifierWaiting()) {
+                int modifiersGroupToWakeUp = updateAndGetLastModifyingGroupNumber();
+                // at this point we know that there is at least 1 modifying thread from modifiersGroupToWakeUp group that
+                // is waiting to enter the critical section. This thread inherits the lock
+                wakeUpThreadFromGivenGroup(modifiersGroupToWakeUp, 0);
+            }
+            else {
+                // no thread wants to enter the critical section
+                lock.release();
+            }
+        }
+        else {
+            lock.release();
+        }
+    }
 
+    private boolean wakeUpThreadFromGivenGroup(int groupNumber, int start) {
+        // this functions scans modifying threads waiting on the group semaphore and wakes up the first thread, whose
+        // depth (layer which the thread wants to modify) is equal to or greater than start parameter.
+        int currentDepth = start;
+        while (currentDepth < size && !modificationSemaphores[groupNumber][currentDepth].hasQueuedThreads()) {
+            currentDepth++;
+        }
+        // if the loop terminated because no other modifying threads were waiting at the semaphores, do nothing.
+        // Otherwise wake up another waiting modifying thread
+        if (currentDepth < size) {
+            modificationSemaphores[groupNumber][currentDepth].release();
+            // return true as the method has waken up some thread
+            return true;
+        }
+        // return false as the method hasn't waken anyone up
+        return false;
+    }
+
+    private int updateAndGetLastModifyingGroupNumber() {
+        // when this function is invoked, it is guaranteed that at least 1 modifying thread is waiting to enter the
+        // critical section
+        lastModifyingGroupNumber = (lastModifyingGroupNumber + 1) % waitingModifiersCounter.length;
+        // iterate until the first waiting group is found
+        while (waitingModifiersCounter[lastModifyingGroupNumber] == 0) {
+            lastModifyingGroupNumber = (lastModifyingGroupNumber + 1) % waitingModifiersCounter.length;
+        }
+        return lastModifyingGroupNumber;
+    }
+
+    private boolean isAnyModifierWaiting() {
+        int numActive = 0;
+        for (int i = 0; i < this.waitingModifiersCounter.length; i++) {
+            numActive += this.waitingModifiersCounter[i];
+        }
+        return numActive > 0;
     }
 
     /**
@@ -282,10 +397,10 @@ public class Cube {
         switch (side) {
             case 0:
                 sides = new int[]{4, 3, 2, 1};
-                initialRows = new int[]{layer, layer, layer, layer};
-                initialCols = new int[]{size - 1, size - 1, size - 1, size - 1};
-                rowShifts = new int[]{0, 0, 0, 0};
-                colShifts = new int[]{-1, -1, -1, -1};
+                initialRows = new int[]{0, layer, layer, layer};
+                initialCols = new int[]{layer, size - 1, size - 1, size - 1};
+                rowShifts = new int[]{1, 0, 0, 0};
+                colShifts = new int[]{0, -1, -1, -1};
                 break;
             case 1:
                 sides = new int[]{0, 2, 5, 4};
