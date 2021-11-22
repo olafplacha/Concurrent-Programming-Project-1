@@ -51,6 +51,9 @@ public class Cube {
         afterRotation.accept(side, layer);
     }
 
+    /**
+     * @return String representation of the cube's state
+     */
     private String getCubeRepresentation() {
         StringBuilder builder = new StringBuilder();
         for (int i = 0; i < NUM_SIDES; i++) {
@@ -65,16 +68,19 @@ public class Cube {
 
     /**
      * Performs rotation within given ring.
-     * @param ring
+     * @param ring ring along which rotation is performed
      */
     private void performRingRotation(RingSquaresCollection ring) {
         // perform swaps for the ring
         for (int i = 0; i < ring.getComponentSize(); i++) {
+            // get coordinates of the first square to swap
             Coordinate currCoord = ring.calculateCoordinate(0, i);
             int currColor = cubeSquares[currCoord.getSideIdx()][currCoord.getRowIdx()][currCoord.getColumnIdx()];
             for (int j = 0; j < RingSquaresCollection.NUM_RING_COMPONENTS; j++) {
+                // get coordinates of the next square to swap
                 Coordinate nextCoord = ring.calculateCoordinate((j + 1) % RingSquaresCollection.NUM_RING_COMPONENTS, i);
                 int nextColor = cubeSquares[nextCoord.getSideIdx()][nextCoord.getRowIdx()][nextCoord.getColumnIdx()];
+                // perform the swap
                 cubeSquares[nextCoord.getSideIdx()][nextCoord.getRowIdx()][nextCoord.getColumnIdx()] = currColor;
                 currColor = nextColor;
             }
@@ -83,7 +89,7 @@ public class Cube {
 
     /**
      * Performs one plane (one side) rotation using rings.
-     * @param side
+     * @param side side of the cube
      */
     private void performSideRotation(int side) {
         // the most outer layer's ring components contain (size - 1) elements
@@ -116,10 +122,9 @@ public class Cube {
     }
 
     /**
-     * Performs the rotation. Warning: this function is used in critical section! May be
-     * used only on independent rotations at the same time.
-     * @param side
-     * @param layer
+     * Performs the rotation along given side and layer
+     * @param side side of the cube along which the rotation is performed
+     * @param layer layer (depth) of the cube from the given side, along which the rotation is performed
      */
     private void performRotation(int side, int layer) {
         // find the ring of the outer rotation
@@ -139,6 +144,11 @@ public class Cube {
         }
     }
 
+    /**
+     * Returns the number of the opposite side
+     * @param side side of the cube, in range <0, 5>
+     * @return number of the opposite side
+     */
     private int getOppositeSide(int side) {
         switch (side) {
             case 0: return 5;
@@ -153,9 +163,9 @@ public class Cube {
     /**
      * Pair of side and layer determine a few blocks of squares, which are called a ring. The function
      * determines such a ring.
-     * @param side - id of side, in range <0, 5>
-     * @param layer - id of layer, which determines the depth of the ring, in range <0, size-1>
-     * @return - RingSquaresCollection which helps iterating over the ring
+     * @param side id of side, in range <0, 5>
+     * @param layer id of layer, which determines the depth of the ring, in range <0, size-1>
+     * @return RingSquaresCollection which helps iterating over the ring
      */
      private RingSquaresCollection determineRing(int side, int layer) {
         int[] sides, initialRows, initialCols, rowShifts, colShifts;

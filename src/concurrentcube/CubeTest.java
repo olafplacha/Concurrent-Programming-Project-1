@@ -33,7 +33,7 @@ public class CubeTest {
             }
         }
 
-        // get cube's state after many rotations
+        // get cube's state after many cyclic rotations
         String cubeAfterCyclicRotations = cube.show();
         assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
     }
