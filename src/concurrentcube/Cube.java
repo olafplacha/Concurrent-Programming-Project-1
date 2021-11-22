@@ -3,22 +3,25 @@ package concurrentcube;
 import java.util.function.BiConsumer;
 
 public class Cube {
-    private int[][][] cubeSquares;
+    private final int[][][] cubeSquares;
     private final int size;
-    private BiConsumer<Integer, Integer> beforeRotation;
-    private BiConsumer<Integer, Integer> afterRotation;
-    private Runnable beforeShowing;
-    private Runnable afterShowing;
+    private final BiConsumer<Integer, Integer> beforeRotation;
+    private final BiConsumer<Integer, Integer> afterRotation;
+    private final Runnable beforeShowing;
+    private final Runnable afterShowing;
+    private final int NUM_SIDES = 6;
 
-    public Cube(int size,
-                BiConsumer<Integer, Integer> beforeRotation,
-                BiConsumer<Integer, Integer> afterRotation,
-                Runnable beforeShowing,
-                Runnable afterShowing) {
-        this.cubeSquares = new int[6][size][size];
+    public Cube(int size, BiConsumer<Integer, Integer> beforeRotation, BiConsumer<Integer, Integer> afterRotation, Runnable beforeShowing, Runnable afterShowing) {
+        this.beforeRotation = beforeRotation;
+        this.afterRotation = afterRotation;
+        this.beforeShowing = beforeShowing;
+        this.afterShowing = afterShowing;
+
+        // initializing cube
         this.size = size;
+        this.cubeSquares = new int[NUM_SIDES][size][size];
 
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < NUM_SIDES; i++) {
             for (int j = 0; j < size; j++) {
                 for (int k = 0; k < size; k++) {
                     cubeSquares[i][j][k] = i;
@@ -27,14 +30,50 @@ public class Cube {
         }
     }
 
-    public void rotate(int side, int layer) throws InterruptedException {
-        RingSquaresCollection ring = determineRing(side, layer);
+    public String show() throws InterruptedException {
+        return criticalSectionShow();
+    }
 
-        for (int i = 0; i < size; i++) {
+    public void rotate(int side, int layer) throws InterruptedException {
+        criticalSectionRotate(side, layer);
+    }
+
+    private String criticalSectionShow() {
+        beforeShowing.run();
+        String cubeRepresentation = getCubeRepresentation();
+        afterShowing.run();
+        return cubeRepresentation;
+    }
+
+    private void criticalSectionRotate(int side, int layer) {
+        beforeRotation.accept(side, layer);
+        performRotation(side, layer);
+        afterRotation.accept(side, layer);
+    }
+
+    private String getCubeRepresentation() {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < NUM_SIDES; i++) {
+            for (int j = 0; j < size; j++) {
+                for (int k = 0; k < size; k++) {
+                    builder.append(cubeSquares[i][j][k]);
+                }
+            }
+        }
+        return builder.toString();
+    }
+
+    /**
+     * Performs rotation within given ring.
+     * @param ring
+     */
+    private void performRingRotation(RingSquaresCollection ring) {
+        // perform swaps for the ring
+        for (int i = 0; i < ring.getComponentSize(); i++) {
             Coordinate currCoord = ring.calculateCoordinate(0, i);
             int currColor = cubeSquares[currCoord.getSideIdx()][currCoord.getRowIdx()][currCoord.getColumnIdx()];
-            for (int j = 0; j < 4; j++) {
-                Coordinate nextCoord = ring.calculateCoordinate((j + 1) % 4, i);
+            for (int j = 0; j < RingSquaresCollection.NUM_RING_COMPONENTS; j++) {
+                Coordinate nextCoord = ring.calculateCoordinate((j + 1) % RingSquaresCollection.NUM_RING_COMPONENTS, i);
                 int nextColor = cubeSquares[nextCoord.getSideIdx()][nextCoord.getRowIdx()][nextCoord.getColumnIdx()];
                 cubeSquares[nextCoord.getSideIdx()][nextCoord.getRowIdx()][nextCoord.getColumnIdx()] = currColor;
                 currColor = nextColor;
@@ -42,28 +81,77 @@ public class Cube {
         }
     }
 
-//    public String show() throws InterruptedException {
-//    }
+    /**
+     * Performs one plane (one side) rotation using rings.
+     * @param side
+     */
+    private void performSideRotation(int side) {
+        // the most outer layer's ring components contain (size - 1) elements
+        int ringComponentSize = size - 1;
+        // denotes how next ring component's element can be derived from the previous one
+        int[] ringRowShifts = new int[]{0, 1, 0, -1};
+        int[] ringColShifts = new int[]{1, 0, -1, 0};
+        // denotes the first elements in each ring's component
+        int[] currentRows = new int[]{0, 0, size - 1, size - 1};
+        int[] currentCols = new int[]{0, size - 1, size - 1, 0};
+        // denotes how the next layer ring first component can be derived from the previous one
+        int[] entryRowShifts = new int[]{1, 1, -1, -1};
+        int[] entryColshifts = new int[]{1, -1, -1, 1};
 
-    public static void main(String[] args) throws InterruptedException {
-        Cube c = new Cube(4, null, null, null, null);
-        c.rotate(2, 0);
-        c.rotate(5, 1);
-
-        for (int i = 0; i < 6; i++) {
-            for (int j = 0; j < 4; j++) {
-                String a = "";
-                for (int k = 0; k < 4; k++) {
-                    a += c.cubeSquares[i][j][k] + " ";
-                }
-                System.out.println(a);
+        int layer = 0;
+        while (ringComponentSize > 0) {
+            Coordinate[] coords = new Coordinate[4];
+            for (int i = 0; i < RingSquaresCollection.NUM_RING_COMPONENTS; i++) {
+                int rowIdx = currentRows[i] + layer * entryRowShifts[i];
+                int colIdx = currentCols[i] + layer * entryColshifts[i];
+                coords[i] = new Coordinate(side, rowIdx, colIdx);
             }
-            System.out.println("---");
+            // create a ring and rotate the ring
+            RingSquaresCollection ring = new RingSquaresCollection(coords, ringRowShifts, ringColShifts, ringComponentSize);
+            performRingRotation(ring);
+            // next layer's ring components contain 2 elements less than previuos layer's ring components
+            ringComponentSize -= 2;
+            layer++;
         }
     }
 
     /**
-     * Pair of side and layer determine 4 blocks of squares, which are called a ring. The function
+     * Performs the rotation. Warning: this function is used in critical section! May be
+     * used only on independent rotations at the same time.
+     * @param side
+     * @param layer
+     */
+    private void performRotation(int side, int layer) {
+        // find the ring of the outer rotation
+        RingSquaresCollection ring = determineRing(side, layer);
+        performRingRotation(ring);
+
+        // if the rotation layer is the first or the last one, side of the cube must also be rotated
+        if (layer == 0) {
+            performSideRotation(side);
+        }
+        else if (layer == this.size - 1) {
+            // 3 clockwise operations are equivalent to 1 counterclockwise
+            int oppositeSide = getOppositeSide(side);
+            performSideRotation(oppositeSide);
+            performSideRotation(oppositeSide);
+            performSideRotation(oppositeSide);
+        }
+    }
+
+    private int getOppositeSide(int side) {
+        switch (side) {
+            case 0: return 5;
+            case 1: return 3;
+            case 2: return 4;
+            case 3: return 1;
+            case 4: return 2;
+            default: return 0;
+        }
+    }
+
+    /**
+     * Pair of side and layer determine a few blocks of squares, which are called a ring. The function
      * determines such a ring.
      * @param side - id of side, in range <0, 5>
      * @param layer - id of layer, which determines the depth of the ring, in range <0, size-1>
@@ -117,30 +205,37 @@ public class Cube {
                 break;
         }
         Coordinate[] coords = new Coordinate[4];
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < RingSquaresCollection.NUM_RING_COMPONENTS; i++) {
             coords[i] = new Coordinate(sides[i], initialRows[i], initialCols[i]);
         }
-        return new RingSquaresCollection(coords, rowShifts, colShifts);
+        return new RingSquaresCollection(coords, rowShifts, colShifts, size);
     }
 
     /**
-     * Pair of side and layer determine 4 blocks of squares. This class helps iterating over them.
+     * Pair of side and layer determine 4 blocks of squares - the ring. This class helps iterating over the ring.
      */
     private static class RingSquaresCollection {
+        static final int NUM_RING_COMPONENTS = 4;
         private final Coordinate[] coords;
         private final int[] rowShifts;
         private final int[] colShifts;
+        private final int componentSize;
 
-        public RingSquaresCollection(Coordinate[] coords, int[] rowShifts, int[] colShifts) {
+        public RingSquaresCollection(Coordinate[] coords, int[] rowShifts, int[] colShifts, int componentSize) {
             this.coords = coords;
             this.rowShifts = rowShifts;
             this.colShifts = colShifts;
+            this.componentSize = componentSize;
         }
 
         public Coordinate calculateCoordinate(int pos, int stepNum) {
             int newRowIdx = coords[pos].getRowIdx() + stepNum * rowShifts[pos];
             int newColIdx = coords[pos].getColumnIdx() + stepNum * colShifts[pos];
             return new Coordinate(coords[pos].sideIdx, newRowIdx, newColIdx);
+        }
+
+        public int getComponentSize() {
+            return this.componentSize;
         }
     }
 
@@ -168,15 +263,6 @@ public class Cube {
 
         public int getColumnIdx() {
             return columnIdx;
-        }
-
-        @Override
-        public String toString() {
-            return "Coordinate{" +
-                    "sideIdx=" + sideIdx +
-                    ", rowIdx=" + rowIdx +
-                    ", columnIdx=" + columnIdx +
-                    '}';
         }
     }
 }
