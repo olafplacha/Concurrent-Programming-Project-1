@@ -68,6 +68,7 @@ public class Cube {
 
     /**
      * Performs rotation within given ring.
+     *
      * @param ring ring along which rotation is performed
      */
     private void performRingRotation(RingSquaresCollection ring) {
@@ -89,6 +90,7 @@ public class Cube {
 
     /**
      * Performs one plane (one side) rotation using rings.
+     *
      * @param side side of the cube
      */
     private void performSideRotation(int side) {
@@ -123,7 +125,8 @@ public class Cube {
 
     /**
      * Performs the rotation along given side and layer
-     * @param side side of the cube along which the rotation is performed
+     *
+     * @param side  side of the cube along which the rotation is performed
      * @param layer layer (depth) of the cube from the given side, along which the rotation is performed
      */
     private void performRotation(int side, int layer) {
@@ -134,8 +137,7 @@ public class Cube {
         // if the rotation layer is the first or the last one, side of the cube must also be rotated
         if (layer == 0) {
             performSideRotation(side);
-        }
-        else if (layer == this.size - 1) {
+        } else if (layer == this.size - 1) {
             // 3 clockwise operations are equivalent to 1 counterclockwise
             int oppositeSide = getOppositeSide(side);
             performSideRotation(oppositeSide);
@@ -146,28 +148,36 @@ public class Cube {
 
     /**
      * Returns the number of the opposite side
+     *
      * @param side side of the cube, in range <0, 5>
      * @return number of the opposite side
      */
     private int getOppositeSide(int side) {
         switch (side) {
-            case 0: return 5;
-            case 1: return 3;
-            case 2: return 4;
-            case 3: return 1;
-            case 4: return 2;
-            default: return 0;
+            case 0:
+                return 5;
+            case 1:
+                return 3;
+            case 2:
+                return 4;
+            case 3:
+                return 1;
+            case 4:
+                return 2;
+            default:
+                return 0;
         }
     }
 
     /**
      * Pair of side and layer determine a few blocks of squares, which are called a ring. The function
      * determines such a ring.
-     * @param side id of side, in range <0, 5>
+     *
+     * @param side  id of side, in range <0, 5>
      * @param layer id of layer, which determines the depth of the ring, in range <0, size-1>
      * @return RingSquaresCollection which helps iterating over the ring
      */
-     private RingSquaresCollection determineRing(int side, int layer) {
+    private RingSquaresCollection determineRing(int side, int layer) {
         int[] sides, initialRows, initialCols, rowShifts, colShifts;
 
         switch (side) {
@@ -250,7 +260,7 @@ public class Cube {
     }
 
     /**
-     *  Represents a position of a square in a cube
+     * Represents a position of a square in a cube
      */
     private static class Coordinate {
         private final int sideIdx;

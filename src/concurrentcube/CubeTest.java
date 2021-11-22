@@ -1,7 +1,6 @@
 package concurrentcube;
 
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -17,7 +16,11 @@ public class CubeTest {
     @DisplayName("Ensures that sequential cyclic rotations does not change cube's state")
     void testSequentialCycleRotation(int size) throws InterruptedException {
 
-        Cube cube = new Cube(size, (x, y) -> {}, (x, y) -> {}, () -> {}, () -> {});
+        Cube cube = new Cube(size, (x, y) -> {
+        }, (x, y) -> {
+        }, () -> {
+        }, () -> {
+        });
 
         // get initial cube's state
         String cubeBeforeCyclicRotations = cube.show();
