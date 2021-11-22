@@ -1,5 +1,6 @@
 package concurrentcube;
 
+import java.util.concurrent.Semaphore;
 import java.util.function.BiConsumer;
 
 public class Cube {
@@ -10,6 +11,23 @@ public class Cube {
     private final Runnable beforeShowing;
     private final Runnable afterShowing;
     private final int NUM_SIDES = 6;
+    private final int NUM_PLANES = 3;
+
+    // variables used for synchronization
+    // for every plane and for every depth within the plane, there is be one semaphore
+    private final Semaphore[][] modificationSemaphores;
+    // semaphore used for stopping reading threads from entering critical section when they are not allowed to
+    private final Semaphore readingSemaphore;
+    // for every plane there is a counter of modifying threads which are waiting for the access to the critical section
+    private int[] waitingModifiersCounter;
+    // counts the number of modifying threads which are in the critical section
+    private int activeModifiersCounter;
+    // counts the number of reading threads that are waiting for the access to the critical section
+    private int waitingReadersCounter;
+    // counts the number of reading threads that are in the cricital section
+    private int activeReadersCounter;
+    // guards access to shared variables
+    private final Semaphore lock;
 
     public Cube(int size, BiConsumer<Integer, Integer> beforeRotation, BiConsumer<Integer, Integer> afterRotation, Runnable beforeShowing, Runnable afterShowing) {
         this.beforeRotation = beforeRotation;
@@ -28,14 +46,42 @@ public class Cube {
                 }
             }
         }
+
+        // initializing variables for synchronization
+        modificationSemaphores = new Semaphore[NUM_PLANES][size];
+        for (int i = 0; i < NUM_PLANES; i++) {
+            for (int j = 0; j < size; j++) {
+                modificationSemaphores[i][j] = new Semaphore(0, true);
+            }
+        }
+        readingSemaphore = new Semaphore(0, true);
+        waitingModifiersCounter = new int[]{0, 0, 0};
+        activeModifiersCounter = 0;
+        waitingReadersCounter = 0;
+        activeReadersCounter = 0;
+        lock = new Semaphore(1, true);
     }
 
     public String show() throws InterruptedException {
-        return criticalSectionShow();
+
+        entrySectionShow();
+        String cubeRepresentation = criticalSectionShow();
+        exitSectionShow();
+
+        return cubeRepresentation;
     }
 
     public void rotate(int side, int layer) throws InterruptedException {
+        // map rotation to plane and depth, which will be used for synchronization
+        Pair<Integer> plane = getRotationToPairMapping(side, layer);
+
+        entrySectionRotate(plane.first(), plane.second());
         criticalSectionRotate(side, layer);
+        exitSectionRotate(plane.first(), plane.second());
+    }
+
+    private void entrySectionShow() {
+
     }
 
     private String criticalSectionShow() {
@@ -45,10 +91,63 @@ public class Cube {
         return cubeRepresentation;
     }
 
+    private void exitSectionShow() {
+
+    }
+
+    private void entrySectionRotate(int planeNumber, int depth) {
+
+    }
+
     private void criticalSectionRotate(int side, int layer) {
         beforeRotation.accept(side, layer);
         performRotation(side, layer);
         afterRotation.accept(side, layer);
+    }
+
+    private void exitSectionRotate(int planeNumber, int depth) {
+
+    }
+
+    /**
+     * Rotations along two different sides may be modifying the cube in the same plane. The function maps side and layer
+     * into plane number as long as depth within the plane.
+     *
+     * @param side side of the cube along which the rotation is performed
+     * @param layer layer (depth) of the cube from the given side, along which the rotation is performed
+     * @return
+     */
+    private Pair<Integer> getRotationToPairMapping(int side, int layer) {
+        int plane;
+        int depth;
+
+        switch (side) {
+            case 0:
+                plane = 0;
+                depth = layer;
+                break;
+            case 1:
+                plane = 1;
+                depth = layer;
+                break;
+            case 2:
+                plane = 2;
+                depth = layer;
+                break;
+            case 3:
+                plane = 1;
+                depth = this.size - layer - 1;
+                break;
+            case 4:
+                plane = 2;
+                depth = this.size - layer - 1;
+                break;
+            default:
+                plane = 0;
+                depth = this.size - layer - 1;
+                break;
+        }
+        return new Pair<>(plane, depth);
     }
 
     /**
