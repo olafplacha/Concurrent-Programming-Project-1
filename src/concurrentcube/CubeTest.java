@@ -1,18 +1,19 @@
 package concurrentcube;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 public class CubeTest {
@@ -79,12 +80,24 @@ public class CubeTest {
         assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
     }
 
-    @Test
-    @DisplayName("")
-    void testConcurrentThreadsSameRotation() throws InterruptedException {
+    boolean sameNumberOfDigits(String s) {
+        int[] counter = new int[6];
+        for (int i = 0; i < s.length(); i++) {
+            counter[s.charAt(i)-'0']++;
+        }
+        int expected = s.length() / 6;
+        for (int i = 0; i < 6; i++) {
+            if (counter[i] != expected) return false;
+        }
+        return true;
+    }
+
+    @RepeatedTest(100)
+    @DisplayName("Test concurrent cyclic rotations.")
+    void testConcurrentThreadsSameRotation() throws InterruptedException, ExecutionException {
         AtomicInteger a = new AtomicInteger(0);
 
-        Cube cube = new Cube(2, (x, y) -> { a.addAndGet(1);
+        Cube cube = new Cube(10, (x, y) -> { a.addAndGet(1);
         }, (x, y) -> { a.addAndGet(1);
         }, () -> {
         }, () -> {
@@ -93,22 +106,71 @@ public class CubeTest {
         // get initial cube's state
         String cubeBeforeCyclicRotations = cube.show();
 
-        ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(8);
-        for (int i = 0; i < 4; i++) {
-            taskExecutorThreads.submit(() -> {
+        List<Future<?>> futures = new ArrayList<>();
+        List<Boolean> done = new ArrayList<>();
+        List<Future<String>> cubeStates = new ArrayList<>();
+
+        int k = 10000;
+        ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(32);
+
+        for (int i = 0; i < k; i++) {
+            futures.add(taskExecutorThreads.submit(() -> {
                 try {
                     cube.rotate(5, 0);
-                    cube.rotate(0, 0);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
-            });
+            }));
+            done.add(false);
         }
-        taskExecutorThreads.awaitTermination(4, TimeUnit.SECONDS);
-        System.out.println(a);
-        TimeUnit.SECONDS.sleep(2);
-        String cubeAfterCyclicRotations = cube.show();
-        assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
+
+        for (int i = 0; i < k; i++) {
+            cubeStates.add(taskExecutorThreads.submit(() -> {
+                try {
+                    return cube.show();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                    return "";
+                }
+            }));
+        }
+
+        for (int i = 0; i < k; i++) {
+            futures.add(taskExecutorThreads.submit(() -> {
+                try {
+                    cube.rotate(5, 1);
+                    cube.rotate(4, 9);
+                    cube.rotate(2, 0);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }));
+            done.add(false);
+        }
+
+        int doneCounter = 0;
+        int currIdx = 0;
+        while (true) {
+            if (!done.get(currIdx) && futures.get(currIdx).isDone()) {
+                try {
+                    futures.get(currIdx).get();
+                } catch (ExecutionException e) {
+                    e.printStackTrace();
+                }
+                done.set(currIdx, true);
+                doneCounter++;
+            }
+            if (doneCounter == done.size()) break;
+            currIdx = (currIdx + 1) % done.size();
+        }
+
+//        for (int i = 0; i < cubeStates.size(); i++) {
+//            String state = cubeStates.get(i).get();
+//            assertTrue(sameNumberOfDigits(state));
+//        }
+//
+//        String cubeAfterCyclicRotations = cube.show();
+//        assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
     }
 
     void showRep(String rep, int s) {

@@ -19,7 +19,9 @@ public class Cube {
     // semaphore used for stopping reading threads from entering critical section when they are not allowed to
     private final Semaphore readingSemaphore;
     // for every plane there is a counter of modifying threads which are waiting for the access to the critical section
-    private final int[] waitingModifiersCounter;
+    private final int[] waitingModifiersCounterPerPlane;
+    // for every depth within each plane there is a counter of modifying threads which are waiting to access the critical section
+    private  final int[][] waitingModifiersCounterPerDepth;
     // counts the number of modifying threads which are in the critical section
     private int activeModifiersCounter;
     // counts the number of reading threads that are waiting for the access to the critical section
@@ -58,7 +60,8 @@ public class Cube {
             }
         }
         readingSemaphore = new Semaphore(0, true);
-        waitingModifiersCounter = new int[]{0, 0, 0};
+        waitingModifiersCounterPerPlane = new int[]{0, 0, 0};
+        waitingModifiersCounterPerDepth = new int[3][size];
         activeModifiersCounter = 0;
         waitingReadersCounter = 0;
         activeReadersCounter = 0;
@@ -134,12 +137,14 @@ public class Cube {
         lock.acquire();
         // if there is any active reading or modifying thread, then the thread must wait on a group semaphore
         if (activeReadersCounter + activeModifiersCounter > 0) {
-            waitingModifiersCounter[planeNumber]++;
+            waitingModifiersCounterPerPlane[planeNumber]++;
+            waitingModifiersCounterPerDepth[planeNumber][depth]++;
             lock.release();
             // wait on the group semaphore (on proper depth)
             modificationSemaphores[planeNumber][depth].acquire();
             // at this point the modifying thread was waken up
-            waitingModifiersCounter[planeNumber]--;
+            waitingModifiersCounterPerPlane[planeNumber]--;
+            waitingModifiersCounterPerDepth[planeNumber][depth]--;
             activeModifiersCounter++;
             // try to wake up some thread from the same group, but with greater depth
             boolean hasWakenGroupThread = wakeUpThreadFromGivenGroup(planeNumber, depth + 1);
@@ -175,7 +180,8 @@ public class Cube {
                 int modifiersGroupToWakeUp = updateAndGetLastModifyingGroupNumber();
                 // at this point we know that there is at least 1 modifying thread from modifiersGroupToWakeUp group that
                 // is waiting to enter the critical section. This thread inherits the lock
-                wakeUpThreadFromGivenGroup(modifiersGroupToWakeUp, 0);
+                boolean a = wakeUpThreadFromGivenGroup(modifiersGroupToWakeUp, 0);
+                if (!a) throw new RuntimeException();
             }
             else {
                 // no thread wants to enter the critical section
@@ -191,7 +197,7 @@ public class Cube {
         // this functions scans modifying threads waiting on the group semaphore and wakes up the first thread, whose
         // depth (layer which the thread wants to modify) is equal to or greater than start parameter.
         int currentDepth = start;
-        while (currentDepth < size && !modificationSemaphores[groupNumber][currentDepth].hasQueuedThreads()) {
+        while (currentDepth < size && waitingModifiersCounterPerDepth[groupNumber][currentDepth] == 0) {
             currentDepth++;
         }
         // if the loop terminated because no other modifying threads were waiting at the semaphores, do nothing.
@@ -208,18 +214,18 @@ public class Cube {
     private int updateAndGetLastModifyingGroupNumber() {
         // when this function is invoked, it is guaranteed that at least 1 modifying thread is waiting to enter the
         // critical section
-        lastModifyingGroupNumber = (lastModifyingGroupNumber + 1) % waitingModifiersCounter.length;
+        lastModifyingGroupNumber = (lastModifyingGroupNumber + 1) % waitingModifiersCounterPerPlane.length;
         // iterate until the first waiting group is found
-        while (waitingModifiersCounter[lastModifyingGroupNumber] == 0) {
-            lastModifyingGroupNumber = (lastModifyingGroupNumber + 1) % waitingModifiersCounter.length;
+        while (waitingModifiersCounterPerPlane[lastModifyingGroupNumber] == 0) {
+            lastModifyingGroupNumber = (lastModifyingGroupNumber + 1) % waitingModifiersCounterPerPlane.length;
         }
         return lastModifyingGroupNumber;
     }
 
     private boolean isAnyModifierWaiting() {
         int numActive = 0;
-        for (int i = 0; i < this.waitingModifiersCounter.length; i++) {
-            numActive += this.waitingModifiersCounter[i];
+        for (int i = 0; i < this.waitingModifiersCounterPerPlane.length; i++) {
+            numActive += this.waitingModifiersCounterPerPlane[i];
         }
         return numActive > 0;
     }
