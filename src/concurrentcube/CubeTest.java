@@ -75,8 +75,6 @@ public class CubeTest {
             cube.rotate(5, 0);
             cube.rotate(5, 0);
         }
-
-        // get cube's state after magic rotations
         String cubeAfterCyclicRotations = cube.show();
         assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
     }
@@ -86,7 +84,7 @@ public class CubeTest {
     void testConcurrentThreadsSameRotation() throws InterruptedException {
         AtomicInteger a = new AtomicInteger(0);
 
-        Cube cube = new Cube(10, (x, y) -> { a.addAndGet(1);
+        Cube cube = new Cube(2, (x, y) -> { a.addAndGet(1);
         }, (x, y) -> { a.addAndGet(1);
         }, () -> {
         }, () -> {
@@ -96,20 +94,49 @@ public class CubeTest {
         String cubeBeforeCyclicRotations = cube.show();
 
         ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(8);
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < 4; i++) {
             taskExecutorThreads.submit(() -> {
                 try {
-                    cube.rotate(5, 5);
+                    cube.rotate(5, 0);
+                    cube.rotate(0, 0);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
             });
         }
-        TimeUnit.SECONDS.sleep(2);
-        taskExecutorThreads.awaitTermination(2, TimeUnit.SECONDS);
+        taskExecutorThreads.awaitTermination(4, TimeUnit.SECONDS);
         System.out.println(a);
+        TimeUnit.SECONDS.sleep(2);
         String cubeAfterCyclicRotations = cube.show();
         assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
+    }
+
+    void showRep(String rep, int s) {
+        int c = 0;
+        for (int i = 0; i < 6; i++) {
+            for (int j = 0; j < s; j++) {
+                String a = "";
+                for (int k = 0; k < s; k++) {
+                    a += rep.charAt(c);
+                    c++;
+                }
+                System.out.println(a);
+            }
+            System.out.println();
+        }
+    }
+
+    @Test
+    void test() throws InterruptedException {
+        Cube cube = new Cube(3, (x, y) -> {
+        }, (x, y) -> {
+        }, () -> {
+        }, () -> {
+        });
+
+        cube.rotate(3, 0);
+        String rep = cube.show();
+        showRep(rep, 3);
     }
 
 }

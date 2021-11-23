@@ -19,7 +19,7 @@ public class Cube {
     // semaphore used for stopping reading threads from entering critical section when they are not allowed to
     private final Semaphore readingSemaphore;
     // for every plane there is a counter of modifying threads which are waiting for the access to the critical section
-    private int[] waitingModifiersCounter;
+    private final int[] waitingModifiersCounter;
     // counts the number of modifying threads which are in the critical section
     private int activeModifiersCounter;
     // counts the number of reading threads that are waiting for the access to the critical section
@@ -397,10 +397,10 @@ public class Cube {
         switch (side) {
             case 0:
                 sides = new int[]{4, 3, 2, 1};
-                initialRows = new int[]{0, layer, layer, layer};
-                initialCols = new int[]{layer, size - 1, size - 1, size - 1};
-                rowShifts = new int[]{1, 0, 0, 0};
-                colShifts = new int[]{0, -1, -1, -1};
+                initialRows = new int[]{layer, layer, layer, layer};
+                initialCols = new int[]{size - 1, size - 1, size - 1, size - 1};
+                rowShifts = new int[]{0, 0, 0, 0};
+                colShifts = new int[]{-1, -1, -1, -1};
                 break;
             case 1:
                 sides = new int[]{0, 2, 5, 4};
@@ -426,9 +426,9 @@ public class Cube {
             case 4:
                 sides = new int[]{0, 1, 5, 3};
                 initialRows = new int[]{layer, 0, size - layer - 1, size - 1};
-                initialCols = new int[]{size - 1, layer, size - 1, size - layer - 1};
+                initialCols = new int[]{size - 1, layer, 0, size - layer - 1};
                 rowShifts = new int[]{0, 1, 0, -1};
-                colShifts = new int[]{-1, 0, -1, 0};
+                colShifts = new int[]{-1, 0, 1, 0};
                 break;
             default:
                 sides = new int[]{2, 3, 4, 1};
