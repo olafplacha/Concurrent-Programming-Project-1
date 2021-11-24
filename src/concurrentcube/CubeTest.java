@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -200,5 +201,144 @@ public class CubeTest {
         String rep = cube.show();
         showRep(rep, 3);
     }
+
+    /**
+     * Helper function which returns as soon as all provided futures are completed
+     * @param futures list of futures to be completed
+     */
+    void returnWhenAllFuturesAreCompleted(List<Future<?>> futures) {
+        int numberOfFutures = futures.size();
+        int numberOfCompletedFutures = 0;
+        boolean[] futureDone = new boolean[numberOfFutures];
+
+        while (true) {
+            for (int i = 0; i < numberOfFutures; i++) {
+                // if another future was completed, increase the counter
+                if (!futureDone[i] && futures.get(i).isDone()) {
+                    futureDone[i] = true;
+                    numberOfCompletedFutures++;
+                }
+                // if all futures were completed, return
+                if (numberOfCompletedFutures == numberOfFutures) {
+                    return;
+                }
+            }
+        }
+    }
+
+    /**
+     * Helper function which creates a cube with dummy work before and after rotation as well as before and after
+     * checking cube's state - it helps to see the superiority of concurrent approach over sequential one
+     * @param size size of cube to be created
+     * @param loopIterations number of loop iterations
+     * @return a cube with described properties
+     */
+    Cube createSimpleCubeWithDummyWork(int size, int loopIterations) {
+
+        BiConsumer<Integer, Integer> rotationWaiting = (integer1, integer2) -> {
+            int dummy = 0;
+            for (int i = 0; i < loopIterations; i++) {
+                dummy++;
+            }
+        };
+
+        Runnable showingWaiting = () -> {
+            int dummy = 0;
+            for (int i = 0; i < loopIterations; i++) {
+                dummy++;
+            }
+        };
+
+        return new Cube(size, rotationWaiting, rotationWaiting, showingWaiting, showingWaiting);
+    }
+
+    /**
+     * Helper function checking if the number of squares is equal for each color of the cube
+     */
+    boolean checkIfEqualNumberOfSquaresOfEachColor(Cube cube) throws InterruptedException {
+        int size = cube.getSize();
+        int[] counterForEachColor = new int[size];
+
+        String cubeState = cube.show();
+        for (int i = 0; i < cubeState.length(); i++) {
+            counterForEachColor[cubeState.charAt(i) - '0']++;
+        }
+
+        for (int i = 0; i < 6; i++) {
+            if (counterForEachColor[i] != size * size) return false;
+        }
+        return true;
+    }
+
+
+    @Test
+    @RepeatedTest(10)
+    @DisplayName("Tests sequential vs concurrent rotations and reads performance.")
+    void testPerformance() throws InterruptedException {
+
+        final int size = 32;
+        final int dummyWork = 1000000000;
+        int numberOfRotations = 100000;
+        int numberOfShowings = 100000;
+
+        Cube cube = createSimpleCubeWithDummyWork(size, dummyWork);
+        ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(8);
+        Random randomNumberGenerator = new Random();
+        List<Future<?>> futures = new ArrayList<>();
+
+        // start of concurrent operations test
+        long start = System.currentTimeMillis();
+        // generate concurrent rotations
+        for (int i = 0; i < numberOfRotations; i++) {
+            futures.add(taskExecutorThreads.submit(() -> {
+                try {
+                    cube.rotate(randomNumberGenerator.nextInt(6), randomNumberGenerator.nextInt(size));
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }));
+        }
+
+        // generate consurrent readings
+        for (int i = 0; i < numberOfShowings; i++) {
+            futures.add(taskExecutorThreads.submit(() -> {
+                try {
+                    cube.show();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }));
+        }
+
+        // wait untill all futures are completed
+        returnWhenAllFuturesAreCompleted(futures);
+        long concurrentTime = System.currentTimeMillis() - start;
+        System.out.println("Concurrent: " + concurrentTime);
+
+        // assert that concurrency errors did not make any color disappear
+        assertTrue(checkIfEqualNumberOfSquaresOfEachColor(cube));
+
+        // start of sequential operations test
+        start = System.currentTimeMillis();
+        for (int i = 0; i < numberOfRotations; i++) {
+            cube.rotate(randomNumberGenerator.nextInt(6), randomNumberGenerator.nextInt(size));
+        }
+        for (int i = 0; i < numberOfShowings; i++) {
+            cube.show();
+        }
+        long sequentialTime = System.currentTimeMillis() - start;
+        System.out.println("Sequential: " + sequentialTime);
+
+        // because of context switching, processes scheduling and other overheards of concurrent programming, the
+        // sequantial approach might sometimes be faster (on my computer the concurrent approach was faster!)
+        if (concurrentTime < sequentialTime) {
+            System.out.println("Winner: concurrent");
+        }
+        else {
+            System.out.println("Winner: sequential");
+        }
+    }
+
+
 
 }

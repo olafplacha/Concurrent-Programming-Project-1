@@ -68,6 +68,10 @@ public class Cube {
         lock = new Semaphore(1, true);
     }
 
+    public int getSize() {
+        return size;
+    }
+
     public String show() throws InterruptedException {
 
         entrySectionShow();
