@@ -278,8 +278,8 @@ public class CubeTest {
 
         final int size = 32;
         final int dummyWork = 1000000000;
-        int numberOfRotations = 100000;
-        int numberOfShowings = 100000;
+        int numberOfRotations = 1000000;
+        int numberOfShowings = 1000000;
 
         Cube cube = createSimpleCubeWithDummyWork(size, dummyWork);
         ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(8);
@@ -329,8 +329,8 @@ public class CubeTest {
         long sequentialTime = System.currentTimeMillis() - start;
         System.out.println("Sequential: " + sequentialTime);
 
-        // because of context switching, processes scheduling and other overheards of concurrent programming, the
-        // sequantial approach might sometimes be faster (on my computer the concurrent approach was faster!)
+        // because of context switching, processes scheduling, number of CPU cores and other important factors, the
+        // sequantial approach might sometimes be faster (though on my computer the concurrent approach was faster)
         if (concurrentTime < sequentialTime) {
             System.out.println("Winner: concurrent");
         }

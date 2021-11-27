@@ -14,7 +14,7 @@ public class Cube {
     private final int NUM_PLANES = 3;
 
     // variables used for synchronization
-    // for every plane and for every depth within the plane, there is be one semaphore
+    // for every plane and for every depth within the plane, there is one semaphore
     private final Semaphore[][] modificationSemaphores;
     // semaphore used for stopping reading threads from entering critical section when they are not allowed to
     private final Semaphore readingSemaphore;
@@ -121,8 +121,10 @@ public class Cube {
         return cubeRepresentation;
     }
 
-    private void exitSectionShow() throws InterruptedException {
-        lock.acquire();
+    private void exitSectionShow() {
+        // if current thread is interrupted, then it must ignore the interruption in this section, since it must clean
+        // up after its execution
+        lock.acquireUninterruptibly();
         activeReadersCounter--;
         // if this is the last reading thread to exit the critical section and there is any waiting modifying thread,
         // then wake up the modifying thread (selected with fairness)
@@ -170,8 +172,10 @@ public class Cube {
         afterRotation.accept(side, layer);
     }
 
-    private void exitSectionRotate(int planeNumber, int depth) throws InterruptedException {
-        lock.acquire();
+    private void exitSectionRotate(int planeNumber, int depth) {
+        // if current thread is interrupted, then it must ignore the interruption in this section, since it must clean
+        // up after its execution
+        lock.acquireUninterruptibly();
         activeModifiersCounter--;
         if (activeModifiersCounter == 0)
         {
@@ -184,8 +188,7 @@ public class Cube {
                 int modifiersGroupToWakeUp = updateAndGetLastModifyingGroupNumber();
                 // at this point we know that there is at least 1 modifying thread from modifiersGroupToWakeUp group that
                 // is waiting to enter the critical section. This thread inherits the lock
-                boolean a = wakeUpThreadFromGivenGroup(modifiersGroupToWakeUp, 0);
-                if (!a) throw new RuntimeException();
+                wakeUpThreadFromGivenGroup(modifiersGroupToWakeUp, 0);
             }
             else {
                 // no thread wants to enter the critical section
@@ -272,7 +275,7 @@ public class Cube {
                 depth = this.size - layer - 1;
                 break;
         }
-        return new Pair<>(plane, depth);
+        return new Pair<Integer>(plane, depth);
     }
 
     /**
