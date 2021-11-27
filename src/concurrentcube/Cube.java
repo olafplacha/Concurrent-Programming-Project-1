@@ -91,14 +91,24 @@ public class Cube {
     }
 
     private void entrySectionShow() throws InterruptedException {
+        // if the thread is interrupted when waiting for the lock, then no clean up is needed
         lock.acquire();
         // if there is any modifying thread that is waiting to enter the critical section, or that is working, then the
         // reading thread must wait
         if (activeModifiersCounter > 0 || isAnyModifierWaiting()) {
             waitingReadersCounter++;
             lock.release();
-            // wait on a semaphore
-            readingSemaphore.acquire();
+            try {
+                // wait on a semaphore
+                readingSemaphore.acquire();
+            } catch (InterruptedException e) {
+                // if the thread is interruped when waiting for the access to the critical section, then a clean up is needed
+                lock.acquireUninterruptibly();
+                // the thread is no longer waiting
+                waitingReadersCounter--;
+                lock.release();
+                throw e;
+            }
             // at this point the reading thread is waken up, ready to perform reading
             waitingReadersCounter--;
         }
@@ -140,6 +150,7 @@ public class Cube {
     }
 
     private void entrySectionRotate(int planeNumber, int depth) throws InterruptedException {
+        // if the thread is interrupted when waiting for the lock, then no clean up is needed
         lock.acquire();
         // if there is any active reading or modifying thread, then the thread must wait on a group semaphore
         if (activeReadersCounter + activeModifiersCounter > 0) {
@@ -147,7 +158,17 @@ public class Cube {
             waitingModifiersCounterPerDepth[planeNumber][depth]++;
             lock.release();
             // wait on the group semaphore (on proper depth)
-            modificationSemaphores[planeNumber][depth].acquire();
+            try {
+                modificationSemaphores[planeNumber][depth].acquire();
+            } catch (InterruptedException e) {
+                // if the thread is interruped when waiting for the access to the critical section, then a clean up is needed
+                lock.acquireUninterruptibly();
+                // the thread is no longer waiting
+                waitingModifiersCounterPerPlane[planeNumber]--;
+                waitingModifiersCounterPerDepth[planeNumber][depth]--;
+                lock.release();
+                throw e;
+            }
             // at this point the modifying thread was waken up
             waitingModifiersCounterPerPlane[planeNumber]--;
             waitingModifiersCounterPerDepth[planeNumber][depth]--;
@@ -275,7 +296,7 @@ public class Cube {
                 depth = this.size - layer - 1;
                 break;
         }
-        return new Pair<Integer>(plane, depth);
+        return new Pair<>(plane, depth);
     }
 
     /**
