@@ -1,21 +1,18 @@
 package concurrentcube;
 
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.RepeatedTest;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 
 public class CubeTest {
@@ -208,9 +205,9 @@ public class CubeTest {
 
     /**
      * It tests for thread-safety.
-     *
-     * This test would fail if the solution was not thread-safe (because the cube was shown in a inconsistent state
-     * while being updated, or the writes were done by conflicting writers at the same time).
+     * <p>
+     * This test would fail if the solution was not thread-safe (because the cube would be shown in a inconsistent state
+     * if read operation was done while the cube was being updated, or the writes were done by conflicting writers at the same time).
      */
     @ParameterizedTest
     @ValueSource(ints = {1, 4, 8, 15, 32})
@@ -258,19 +255,162 @@ public class CubeTest {
         }
     }
 
+    /**
+     * It tests for non-conflicting writes concurrency.
+     * <p>
+     * This test would fail if non-conflicting writes were not concurrent (because the number of unique write versions would be equal
+     * to the number of writes if the operations were done sequentially).
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {4, 8, 15, 32})
+    @DisplayName("Tests if non-conflicting writes are done concurrently.")
+    void testNonConflictingWrites(int size) throws InterruptedException {
+        int numberOfConcurrentThreads = 512;
+        int numberOfWritesPerThread = 4;
+
+        // Create variable which helps to determine if non-conflicting writes are concurrent.
+        AtomicInteger versionCounter = new AtomicInteger(0);
+        List<Integer> versionList = Collections.synchronizedList(new ArrayList<>());
+
+        // Create a function which adds current versionCounter to a list.
+        BiConsumer<Integer, Integer> beforeRotation = new BiConsumer<Integer, Integer>() {
+            @Override
+            public void accept(Integer integer, Integer integer2) {
+                try {
+                    TimeUnit.MILLISECONDS.sleep(5);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                versionList.add(versionCounter.get());
+            }
+        };
+
+        // Create a function which increases the versionCounter after performing a write.
+        BiConsumer<Integer, Integer> afterRotation = new BiConsumer<Integer, Integer>() {
+            @Override
+            public void accept(Integer integer, Integer integer2) {
+                try {
+                    TimeUnit.MILLISECONDS.sleep(5);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                versionCounter.addAndGet(1);
+            }
+        };
+
+        // Create a cube with writes versioning.
+        Cube cube = new Cube(size, beforeRotation, afterRotation, () -> {
+        }, () -> {
+        });
+
+        // Create writing threads.
+        List<Thread> threads = new ArrayList<>();
+        Random random = new Random();
+
+        for (int i = 0; i < numberOfConcurrentThreads; i++) {
+            // Each thread will perform random writes.
+            threads.add(new Thread(() -> {
+                for (int j = 0; j < numberOfWritesPerThread; j++) {
+                    try {
+                        cube.rotate(random.nextInt(Cube.getNumSides()), random.nextInt(size));
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }));
+        }
+
+        for (Thread t : threads) {
+            t.start();
+        }
+
+        for (Thread t : threads) {
+            t.join();
+        }
+
+        // Get unique versions of concurrent writes.
+        Set<Integer> uniqueVersions = new HashSet<>(versionList);
+
+        // Assert that the operations were done concurrently.
+        float concurrencyCoefficient = (float) numberOfConcurrentThreads * numberOfWritesPerThread / uniqueVersions.size();
+        assertTrue(concurrencyCoefficient > 1);
+    }
+
+    /**
+     * It tests for liveness of read operations.
+     * <p>
+     * This test would fail if there was no liveness of read operations (because the reading thread would never be allowed to
+     * get the cube's state while there was a heavy stream of write operations).
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {4, 8, 15, 32})
+    @DisplayName("Tests if there if liveness of read operations.")
+    void testLivenessOfReads(int size) {
+        int numberOfRuns = 10;
+        int numberOfWritingThreads = 10;
+        int timeoutSeconds = 5;
+        Random random = new Random();
+
+        for (int i = 0; i < numberOfRuns; i++) {
+            Cube cube = cubeWithDummyWork(size, 0);
+
+            // Create a collection of threads which perform infinite stream of random writes.
+            List<Thread> threads = new ArrayList<>();
+            for (int j = 0; j < numberOfWritingThreads; j++) {
+                int randomSide = random.nextInt(Cube.getNumSides());
+                int randomLayer = random.nextInt(size);
+                threads.add(new Thread(() -> {
+                    while (true) {
+                        try {
+                            cube.rotate(randomSide, randomLayer);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }));
+            }
+
+            for (Thread t : threads) {
+                t.start();
+            }
+
+            // Create a reading thread.
+            Thread readingThread = new Thread(() -> {
+                try {
+                    cube.show();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            });
+
+            readingThread.start();
+            long startTime = System.currentTimeMillis();
+            while (System.currentTimeMillis() < startTime + 1000 * timeoutSeconds) {
+                if (!readingThread.isAlive()) {
+                    // Reading thread was able to read cube's state within a finite time.
+                    break;
+                }
+            }
+            // If the reading thread is still trying to read the cube's state, then there is probably a problem of starvation.
+            if (readingThread.isAlive()) {
+                fail();
+            }
+        }
+    }
+
 
     @ParameterizedTest
     @ValueSource(ints = {64})
     @DisplayName("Tests sequential vs concurrent rotations and reads performance.")
     void testPerformance(int size) throws InterruptedException {
-        int numberofThreads = 32;
+        int numberOfThreads = 32;
         int dummyWork = 1000000;
         int numberOfRotations = 100000;
         int numberOfShowings = 100000;
 
         Cube cube = cubeWithDummyWork(size, dummyWork);
 
-        ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(numberofThreads);
+        ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(numberOfThreads);
         Random randomNumberGenerator = new Random();
         List<Future<?>> futures = new ArrayList<>();
 
