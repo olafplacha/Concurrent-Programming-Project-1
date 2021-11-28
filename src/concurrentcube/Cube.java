@@ -89,7 +89,7 @@ public class Cube {
 
         entrySectionRotate(plane.first(), plane.second());
         criticalSectionRotate(side, layer);
-        exitSectionRotate(plane.first(), plane.second());
+        exitSectionRotate();
     }
 
     private void entrySectionShow() throws InterruptedException {
@@ -160,17 +160,7 @@ public class Cube {
             waitingModifiersCounterPerDepth[planeNumber][depth]++;
             lock.release();
             // wait on the group semaphore (on proper depth)
-            try {
-                modificationSemaphores[planeNumber][depth].acquire();
-            } catch (InterruptedException e) {
-                // if the thread is interruped when waiting for the access to the critical section, then a clean up is needed
-                lock.acquireUninterruptibly();
-                // the thread is no longer waiting
-                waitingModifiersCounterPerPlane[planeNumber]--;
-                waitingModifiersCounterPerDepth[planeNumber][depth]--;
-                lock.release();
-                throw e;
-            }
+            modificationSemaphores[planeNumber][depth].acquireUninterruptibly();
             // at this point the modifying thread was waken up
             waitingModifiersCounterPerPlane[planeNumber]--;
             waitingModifiersCounterPerDepth[planeNumber][depth]--;
@@ -187,6 +177,13 @@ public class Cube {
             activeModifiersCounter++;
             lock.release();
         }
+        // Check interruption flag.
+        if (Thread.currentThread().isInterrupted()) {
+            // Clean up.
+            exitSectionRotate();
+            System.out.println("elo");
+            throw new InterruptedException();
+        }
     }
 
     private void criticalSectionRotate(int side, int layer) {
@@ -195,7 +192,7 @@ public class Cube {
         afterRotation.accept(side, layer);
     }
 
-    private void exitSectionRotate(int planeNumber, int depth) {
+    private void exitSectionRotate() {
         // if current thread is interrupted, then it must ignore the interruption in this section, since it must clean
         // up after its execution
         lock.acquireUninterruptibly();
@@ -534,5 +531,45 @@ public class Cube {
         public int getColumnIdx() {
             return columnIdx;
         }
+    }
+
+    // to be deleted!
+    public void rotate(String rot) throws InterruptedException {
+        int faceno = 0;
+        int layer = 0;
+
+        switch (rot.charAt(0)) {
+            case 'F': faceno = 2; break;
+            case 'B': faceno = 4; break;
+            case 'U': faceno = 0; break;
+            case 'D': faceno = 5; break;
+            case 'L': faceno = 1; break;
+            case 'R': faceno = 3; break;
+            case 'M': faceno = 1; layer = 1; break;
+            case 'E': faceno = 5; layer = 1; break;
+            case 'S': faceno = 2; layer = 1; break;
+            default: { System.err.println("baaaad ;("); break; }
+        }
+
+        if (rot.length() > 1 && rot.charAt(1) == '\'') {
+            // System.out.println("prim detected: " + rot);
+            faceno = new int[] {5, 3, 4, 1, 2, 0}[faceno];
+            layer = size - 1 - layer;
+        }
+
+        rotate(faceno, layer);
+    }
+
+    // to be deleted!
+    public int[] count() {
+        int[] res = new int[6];
+        for (int i = 0; i < 6; ++i) {
+            for (int j = 0; j < size; j++) {
+                for (int k = 0; k < size; k++) {
+                    res[cubeSquares[i][j][k]]++;
+                }
+            }
+        }
+        return res;
     }
 }

@@ -97,10 +97,17 @@ public class CubeTest {
     }
 
 
+    /**
+     * It tests for rotations correctness.
+     * <p>
+     * If this test fails it means that rotations are not implemented properly.
+     */
     @ParameterizedTest
     @ValueSource(ints = {1, 2, 3, 4, 5, 100, 201, 512})
     @DisplayName("Tests if sequential cyclic rotations change cube's initial state.")
     void testSequentialCycleRotations(int size) throws InterruptedException {
+        int numCyclicRotations = 1000;
+
         // Create a cube of various sizes.
         Cube cube = cubeWithDummyWork(size, 0);
 
@@ -108,7 +115,6 @@ public class CubeTest {
         String cubeBeforeCyclicRotations = cube.show();
 
         Random rand = new Random();
-        int numCyclicRotations = 1000;
         for (int i = 0; i < numCyclicRotations; i++) {
             // Pick random side and layer for the cyclic rotation.
             int side = rand.nextInt(Cube.getNumSides());
@@ -124,7 +130,11 @@ public class CubeTest {
         assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
     }
 
-
+    /**
+     * It tests for rotations correctness.
+     * <p>
+     * If this test fails it means that rotations are not implemented properly.
+     */
     @ParameterizedTest
     @ValueSource(ints = {1, 2, 3, 4, 5, 100, 201})
     @DisplayName("Tests if sequential rotations work properly on one magic rotations sequence.")
@@ -154,6 +164,11 @@ public class CubeTest {
     }
 
 
+    /**
+     * It tests for rotations correctness and thread-safety.
+     * <p>
+     * If this test fails it means that rotations are not implemented properly or conflicting writes were done simultaneously.
+     */
     @ParameterizedTest
     @ValueSource(ints = {1, 4, 8, 15, 32})
     @DisplayName("Tests if random concurrent cyclic rotation change cube's initial state.")
@@ -206,8 +221,8 @@ public class CubeTest {
     /**
      * It tests for thread-safety.
      * <p>
-     * This test would fail if the solution was not thread-safe (because the cube would be shown in a inconsistent state
-     * if read operation was done while the cube was being updated, or the writes were done by conflicting writers at the same time).
+     * If this test fails it means that the solution is not thread-safe (either because the cube was shown in an inconsistent state
+     * while being updated, or the writes were done by conflicting writers at the same time and spoiled color consistency).
      */
     @ParameterizedTest
     @ValueSource(ints = {1, 4, 8, 15, 32})
@@ -363,8 +378,7 @@ public class CubeTest {
                     while (true) {
                         try {
                             cube.rotate(randomSide, randomLayer);
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
+                        } catch (InterruptedException ignored) {
                         }
                     }
                 }));
@@ -395,73 +409,77 @@ public class CubeTest {
             if (readingThread.isAlive()) {
                 fail();
             }
+
+            // Writing threads are no longer useful, interrupt them.
+            for (Thread t : threads) {
+                t.interrupt();
+            }
         }
     }
 
 
-    @ParameterizedTest
-    @ValueSource(ints = {64})
-    @DisplayName("Tests sequential vs concurrent rotations and reads performance.")
-    void testPerformance(int size) throws InterruptedException {
-        int numberOfThreads = 32;
-        int dummyWork = 1000000;
-        int numberOfRotations = 100000;
-        int numberOfShowings = 100000;
-
-        Cube cube = cubeWithDummyWork(size, dummyWork);
-
-        ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(numberOfThreads);
-        Random randomNumberGenerator = new Random();
-        List<Future<?>> futures = new ArrayList<>();
-
-        // start of concurrent operations test
-        long start = System.currentTimeMillis();
-        // generate concurrent rotations
-        for (int i = 0; i < numberOfRotations; i++) {
-            futures.add(taskExecutorThreads.submit(() -> {
-                try {
-                    cube.rotate(randomNumberGenerator.nextInt(Cube.getNumSides()), randomNumberGenerator.nextInt(size));
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }));
-        }
-
-        // generate concurrent readings
-        for (int i = 0; i < numberOfShowings; i++) {
-            futures.add(taskExecutorThreads.submit(() -> {
-                try {
-                    cube.show();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }));
-        }
-
-        // wait untill all futures are completed
-        returnWhenAllFuturesAreCompleted(futures);
-        long concurrentTime = System.currentTimeMillis() - start;
-        System.out.println("Concurrent: " + concurrentTime);
-
-        // start of sequential operations test
-        start = System.currentTimeMillis();
-        for (int i = 0; i < numberOfRotations; i++) {
-            cube.rotate(randomNumberGenerator.nextInt(6), randomNumberGenerator.nextInt(size));
-        }
-        for (int i = 0; i < numberOfShowings; i++) {
-            cube.show();
-        }
-        long sequentialTime = System.currentTimeMillis() - start;
-        System.out.println("Sequential: " + sequentialTime);
-
-        // because of context switching, processes scheduling, number of CPU cores and other important factors, the
-        // sequential approach might sometimes be faster (though on my computer the concurrent approach was faster)
-        if (concurrentTime < sequentialTime) {
-            System.out.println("Winner: concurrent");
-        } else {
-            System.out.println("Winner: sequential");
-        }
-    }
-
+//    @ParameterizedTest
+//    @ValueSource(ints = {64})
+//    @DisplayName("Tests sequential vs concurrent rotations and reads performance.")
+//    void testPerformance(int size) throws InterruptedException {
+//        int numberOfThreads = 32;
+//        int dummyWork = 1000000;
+//        int numberOfRotations = 100000;
+//        int numberOfShowings = 100000;
+//
+//        Cube cube = cubeWithDummyWork(size, dummyWork);
+//
+//        ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(numberOfThreads);
+//        Random randomNumberGenerator = new Random();
+//        List<Future<?>> futures = new ArrayList<>();
+//
+//        // start of concurrent operations test
+//        long start = System.currentTimeMillis();
+//        // generate concurrent rotations
+//        for (int i = 0; i < numberOfRotations; i++) {
+//            futures.add(taskExecutorThreads.submit(() -> {
+//                try {
+//                    cube.rotate(randomNumberGenerator.nextInt(Cube.getNumSides()), randomNumberGenerator.nextInt(size));
+//                } catch (InterruptedException e) {
+//                    e.printStackTrace();
+//                }
+//            }));
+//        }
+//
+//        // generate concurrent readings
+//        for (int i = 0; i < numberOfShowings; i++) {
+//            futures.add(taskExecutorThreads.submit(() -> {
+//                try {
+//                    cube.show();
+//                } catch (InterruptedException e) {
+//                    e.printStackTrace();
+//                }
+//            }));
+//        }
+//
+//        // wait untill all futures are completed
+//        returnWhenAllFuturesAreCompleted(futures);
+//        long concurrentTime = System.currentTimeMillis() - start;
+//        System.out.println("Concurrent: " + concurrentTime);
+//
+//        // start of sequential operations test
+//        start = System.currentTimeMillis();
+//        for (int i = 0; i < numberOfRotations; i++) {
+//            cube.rotate(randomNumberGenerator.nextInt(6), randomNumberGenerator.nextInt(size));
+//        }
+//        for (int i = 0; i < numberOfShowings; i++) {
+//            cube.show();
+//        }
+//        long sequentialTime = System.currentTimeMillis() - start;
+//        System.out.println("Sequential: " + sequentialTime);
+//
+//        // because of context switching, processes scheduling, number of CPU cores and other important factors, the
+//        // sequential approach might sometimes be faster (though on my computer the concurrent approach was faster)
+//        if (concurrentTime < sequentialTime) {
+//            System.out.println("Winner: concurrent");
+//        } else {
+//            System.out.println("Winner: sequential");
+//        }
+//    }
 
 }
