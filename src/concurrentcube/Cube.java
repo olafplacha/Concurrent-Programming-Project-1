@@ -3,44 +3,59 @@ package concurrentcube;
 import java.util.concurrent.Semaphore;
 import java.util.function.BiConsumer;
 
+
+/**
+ * This is an implementation of Rubik's Cube, which enables non-conflicting operations to be done concurrently.
+ * Thread synchronization was developed using semaphores. Implementation has been tested for thread-safety and liveness.
+ */
 public class Cube {
+    private static final int NUM_SIDES = 6;
+    private static final int NUM_PLANES = 3;
     private final int[][][] cubeSquares;
     private final int size;
     private final BiConsumer<Integer, Integer> beforeRotation;
     private final BiConsumer<Integer, Integer> afterRotation;
     private final Runnable beforeShowing;
     private final Runnable afterShowing;
-    private static final int NUM_SIDES = 6;
-    private static final int NUM_PLANES = 3;
 
-    // variables used for synchronization
-    // for every plane and for every depth within the plane, there is one semaphore
+    // Variables used for synchronization.
+    // For every plane and for every depth within the plane, there is one semaphore.
     private final Semaphore[][] modificationSemaphores;
-    // semaphore used for stopping reading threads from entering critical section when they are not allowed to
+    // Semaphore used for stopping reading threads from entering critical section when they are not allowed to.
     private final Semaphore readingSemaphore;
-    // for every plane there is a counter of modifying threads which are waiting for the access to the critical section
+    // For every plane there is a counter of modifying threads which are waiting for the access to the critical section.
     private final int[] waitingModifiersCounterPerPlane;
-    // for every depth within each plane there is a counter of modifying threads which are waiting to access the critical section
-    private  final int[][] waitingModifiersCounterPerDepth;
-    // counts the number of modifying threads which are in the critical section
-    private int activeModifiersCounter;
-    // counts the number of reading threads that are waiting for the access to the critical section
-    private int waitingReadersCounter;
-    // counts the number of reading threads that are in the cricital section
-    private int activeReadersCounter;
-    // guards access to shared variables
+    // For every depth within each plane there is a counter of modifying threads which are waiting to access the critical section.
+    private final int[][] waitingModifiersCounterPerDepth;
+    // Guards access to shared variables.
     private final Semaphore lock;
-    // number of plane of which modifying threads were last let in to the critical section. This variable helps to
-    // mitigate the problem of starvation
+    // Counts the number of modifying threads which are in the critical section.
+    private int activeModifiersCounter;
+    // Counts the number of reading threads that are waiting for the access to the critical section.
+    private int waitingReadersCounter;
+    // Counts the number of reading threads that are in the cricital section.
+    private int activeReadersCounter;
+    // Number of plane of which modifying threads were last let in to the critical section. This variable helps to
+    // mitigate the problem of starvation.
     private int lastModifyingGroupNumber = -1;
 
-    public Cube(int size, BiConsumer<Integer, Integer> beforeRotation, BiConsumer<Integer, Integer> afterRotation, Runnable beforeShowing, Runnable afterShowing) {
+    /**
+     * Constructor of the cube.
+     *
+     * @param size           Size of a cube to be created.
+     * @param beforeRotation Action to be done before performing rotation.
+     * @param afterRotation  Action to be done after performing rotation.
+     * @param beforeShowing  Action to be done before performing serialization.
+     * @param afterShowing   Action to be done after performing serialization.
+     */
+    public Cube(int size, BiConsumer<Integer, Integer> beforeRotation, BiConsumer<Integer, Integer> afterRotation,
+                Runnable beforeShowing, Runnable afterShowing) {
         this.beforeRotation = beforeRotation;
         this.afterRotation = afterRotation;
         this.beforeShowing = beforeShowing;
         this.afterShowing = afterShowing;
 
-        // initializing cube
+        // Initializing the cube.
         this.size = size;
         this.cubeSquares = new int[NUM_SIDES][size][size];
 
@@ -52,7 +67,7 @@ public class Cube {
             }
         }
 
-        // initializing variables for synchronization
+        // Initializing variables for synchronization.
         modificationSemaphores = new Semaphore[NUM_PLANES][size];
         for (int i = 0; i < NUM_PLANES; i++) {
             for (int j = 0; j < size; j++) {
@@ -68,12 +83,23 @@ public class Cube {
         lock = new Semaphore(1, true);
     }
 
-    public int getSize() {
-        return size;
+
+    /**
+     * This method returns the number of sides of the cube.
+     *
+     * @return Number of sides of the cube.
+     */
+    public static int getNumSides() {
+        return NUM_SIDES;
     }
 
-    public static int getNumSides() { return NUM_SIDES; }
 
+    /**
+     * This method performs a read on the cube. This method has been tested for thread-safety and liveness.
+     *
+     * @return Serialized cube.
+     * @throws InterruptedException
+     */
     public String show() throws InterruptedException {
 
         entrySectionShow();
@@ -83,8 +109,16 @@ public class Cube {
         return cubeRepresentation;
     }
 
+
+    /**
+     * Performs a rotation on the cube. This method has been tested for thread-safety and liveness.
+     *
+     * @param side  Side of the cube along which rotation is performed.
+     * @param layer Layer of the cube along which rotation is performed.
+     * @throws InterruptedException
+     */
     public void rotate(int side, int layer) throws InterruptedException {
-        // map rotation to plane and depth, which will be used for synchronization
+        // Map rotation to plane and depth, which will be used for synchronization.
         Pair<Integer> plane = getRotationToPairMapping(side, layer);
 
         entrySectionRotate(plane.first(), plane.second());
@@ -92,27 +126,32 @@ public class Cube {
         exitSectionRotate();
     }
 
+
+    /**
+     * This method returns as soon as the reading thread, which invoked it, is allowed to access the cube.
+     *
+     * @throws InterruptedException
+     */
     private void entrySectionShow() throws InterruptedException {
-        // if the thread is interrupted when waiting for the lock, then no clean up is needed
+        // If the thread is interrupted when waiting for the lock, then no clean up is needed.
         lock.acquire();
-        // if there is any modifying thread that is waiting to enter the critical section, or that is working, then the
-        // reading thread must wait
+        // If there is any modifying thread that is waiting to enter the critical section, or that is working, then the
+        // reading thread must wait.
         if (activeModifiersCounter > 0 || isAnyModifierWaiting()) {
             waitingReadersCounter++;
             lock.release();
-            // wait on a semaphore
+            // Wait on a semaphore.
             readingSemaphore.acquireUninterruptibly();
-            // at this point the reading thread is waken up, ready to perform reading
+            // At this point the reading thread is waken up, ready to perform reading.
             waitingReadersCounter--;
         }
         activeReadersCounter++;
-        // modifying thread wakes up one reading thread. If there are more than 1 waiting reading threads, they are
-        // waken by other reading threads in a cascading manner
+        // Modifying thread wakes up one reading thread. If there are more than 1 waiting reading threads, they are
+        // waken by other reading threads in a cascading manner.
         if (waitingReadersCounter > 0) {
             readingSemaphore.release();
-        }
-        else {
-            // no more reading threads are waiting, give back the lock
+        } else {
+            // No more reading threads are waiting, give back the lock.
             lock.release();
         }
         // If current thread was interrupted, then do a clean up and throw an exception.
@@ -122,6 +161,12 @@ public class Cube {
         }
     }
 
+
+    /**
+     * This method performs all the operations which are critical to getting serialized cube.
+     *
+     * @return Serialized cube.
+     */
     private String criticalSectionShow() {
         beforeShowing.run();
         String cubeRepresentation = getCubeRepresentation();
@@ -129,47 +174,57 @@ public class Cube {
         return cubeRepresentation;
     }
 
+
+    /**
+     * This method performs all the operations needed to stop accessing the cube by the reader.
+     */
     private void exitSectionShow() {
-        // if current thread is interrupted, then it must ignore the interruption in this section, since it must clean
-        // up after its execution
+        // If current thread is interrupted, then it must ignore the interruption in this section, since it must clean
+        // up after its execution.
         lock.acquireUninterruptibly();
         activeReadersCounter--;
-        // if this is the last reading thread to exit the critical section and there is any waiting modifying thread,
-        // then wake up the modifying thread (selected with fairness)
+        // If this is the last reading thread to exit the critical section and there is any waiting modifying thread,
+        // then wake up the modifying thread (selected with fairness).
         if (activeReadersCounter == 0 && isAnyModifierWaiting()) {
             int modifiersGroupToWakeUp = updateAndGetLastModifyingGroupNumber();
-            // at this point we know that there is at least 1 modifying thread from modifiersGroupToWakeUp group that
-            // is waiting to enter the critical section. This thread inherits the lock
+            // At this point we know that there is at least 1 modifying thread from modifiersGroupToWakeUp group that
+            // is waiting to enter the critical section. This thread inherits the lock.
             wakeUpThreadFromGivenGroup(modifiersGroupToWakeUp, 0);
-        }
-        else {
+        } else {
             lock.release();
         }
     }
 
+
+    /**
+     * This method returns as soon as the writing thread, which invoked it, is allowed to access the cube.
+     *
+     * @param planeNumber Number of the plane along which the rotation is performed.
+     * @param depth       Depth along which the rotation is performed.
+     * @throws InterruptedException
+     */
     private void entrySectionRotate(int planeNumber, int depth) throws InterruptedException {
-        // if the thread is interrupted when waiting for the lock, then no clean up is needed
+        // If the thread is interrupted when waiting for the lock, then no clean up is needed.
         lock.acquire();
-        // if there is any active reading or modifying thread, then the thread must wait on a group semaphore
+        // If there is any active reading or modifying thread, then the thread must wait on a group semaphore.
         if (activeReadersCounter + activeModifiersCounter > 0) {
             waitingModifiersCounterPerPlane[planeNumber]++;
             waitingModifiersCounterPerDepth[planeNumber][depth]++;
             lock.release();
-            // wait on the group semaphore (on proper depth)
+            // Wait on the group semaphore (on proper depth).
             modificationSemaphores[planeNumber][depth].acquireUninterruptibly();
-            // at this point the modifying thread was waken up
+            // At this point the modifying thread was waken up.
             waitingModifiersCounterPerPlane[planeNumber]--;
             waitingModifiersCounterPerDepth[planeNumber][depth]--;
             activeModifiersCounter++;
-            // try to wake up some thread from the same group, but with greater depth
+            // Try to wake up some thread from the same group, but with greater depth.
             boolean hasWakenGroupThread = wakeUpThreadFromGivenGroup(planeNumber, depth + 1);
             if (!hasWakenGroupThread) {
-                // current thread was the last one to be waken up, give back the lock
+                // Current thread was the last one to be waken up, give back the lock.
                 lock.release();
             }
-        }
-        else {
-            // no other thread is performing any operation on the cube, safe to enter the critical section
+        } else {
+            // No other thread is performing any operation on the cube, safe to enter the critical section.
             activeModifiersCounter++;
             lock.release();
         }
@@ -180,69 +235,94 @@ public class Cube {
         }
     }
 
+
+    /**
+     * This method performs all the operations which are critical to rotating the cube.
+     *
+     * @param side  Side of the cube along which rotation is performed.
+     * @param layer Layer of the cube along which rotation is performed.
+     */
     private void criticalSectionRotate(int side, int layer) {
         beforeRotation.accept(side, layer);
         performRotation(side, layer);
         afterRotation.accept(side, layer);
     }
 
+
+    /**
+     * This method performs all the operations needed to stop accessing the cube by the writer.
+     */
     private void exitSectionRotate() {
-        // if current thread is interrupted, then it must ignore the interruption in this section, since it must clean
-        // up after its execution
+        // If current thread is interrupted, then it must ignore the interruption in this section, since it must clean
+        // up after its execution.
         lock.acquireUninterruptibly();
         activeModifiersCounter--;
-        if (activeModifiersCounter == 0)
-        {
-            // current thread is the last modifying thread from its group that is leaving the critical section. If any
-            // reading thread is waiting, then wake it up (other reading threads will be waken up is a cascading manner)
+        if (activeModifiersCounter == 0) {
+            // Current thread is the last modifying thread from its group that is leaving the critical section. If any
+            // reading thread is waiting, then wake it up (other reading threads will be waken up is a cascading manner).
             if (waitingReadersCounter > 0) {
                 readingSemaphore.release(); // the lock is inherited
-            }
-            else if (isAnyModifierWaiting()) {
+            } else if (isAnyModifierWaiting()) {
                 int modifiersGroupToWakeUp = updateAndGetLastModifyingGroupNumber();
-                // at this point we know that there is at least 1 modifying thread from modifiersGroupToWakeUp group that
-                // is waiting to enter the critical section. This thread inherits the lock
+                // At this point we know that there is at least 1 modifying thread from modifiersGroupToWakeUp group that
+                // is waiting to enter the critical section. This thread inherits the lock.
                 wakeUpThreadFromGivenGroup(modifiersGroupToWakeUp, 0);
-            }
-            else {
-                // no thread wants to enter the critical section
+            } else {
+                // No thread wants to enter the critical section.
                 lock.release();
             }
-        }
-        else {
+        } else {
             lock.release();
         }
     }
 
+
+    /**
+     * This method scans writing threads waiting on the group semaphore and wakes up the first thread, whose depth
+     * (layer which the thread wants to modify) is equal to or greater than start parameter.
+     *
+     * @param groupNumber Number of the group from which a writing thread will be waken up.
+     * @param start       Index within the group from which the search is performed.
+     * @return
+     */
     private boolean wakeUpThreadFromGivenGroup(int groupNumber, int start) {
-        // this functions scans modifying threads waiting on the group semaphore and wakes up the first thread, whose
-        // depth (layer which the thread wants to modify) is equal to or greater than start parameter.
         int currentDepth = start;
         while (currentDepth < size && waitingModifiersCounterPerDepth[groupNumber][currentDepth] == 0) {
             currentDepth++;
         }
-        // if the loop terminated because no other modifying threads were waiting at the semaphores, do nothing.
-        // Otherwise wake up another waiting modifying thread
+        // If the loop terminated because no other modifying threads were waiting at the semaphores, do nothing.
+        // Otherwise wake up another waiting modifying thread.
         if (currentDepth < size) {
             modificationSemaphores[groupNumber][currentDepth].release();
-            // return true as the method has waken up some thread
+            // Return true as the method has waken up some thread.
             return true;
         }
-        // return false as the method hasn't waken anyone up
+        // Return false as the method hasn't waken anyone up.
         return false;
     }
 
+
+    /**
+     * This method updates the counter denoting the index of writers group, which will be waken up from the group semaphore.
+     *
+     * @return Index of the group to be waken up from the group semaphore.
+     */
     private int updateAndGetLastModifyingGroupNumber() {
-        // when this function is invoked, it is guaranteed that at least 1 modifying thread is waiting to enter the
-        // critical section
+        // When this function is invoked, it is guaranteed that at least 1 modifying thread is waiting to enter the
+        // critical section.
         lastModifyingGroupNumber = (lastModifyingGroupNumber + 1) % waitingModifiersCounterPerPlane.length;
-        // iterate until the first waiting group is found
+        // Iterate until the first waiting group is found.
         while (waitingModifiersCounterPerPlane[lastModifyingGroupNumber] == 0) {
             lastModifyingGroupNumber = (lastModifyingGroupNumber + 1) % waitingModifiersCounterPerPlane.length;
         }
         return lastModifyingGroupNumber;
     }
 
+    /**
+     * This method checks id any writing thread is waiting for the access to the cube.
+     *
+     * @return True iff any writing thread is waiting for the access to the cube.
+     */
     private boolean isAnyModifierWaiting() {
         int numActive = 0;
         for (int i = 0; i < this.waitingModifiersCounterPerPlane.length; i++) {
@@ -251,13 +331,14 @@ public class Cube {
         return numActive > 0;
     }
 
+
     /**
-     * Rotations along two different sides may be modifying the cube in the same plane. The function maps side and layer
-     * into plane number as long as depth within the plane.
+     * Rotations along two different sides may be modifying the cube in the same plane. This method maps the side and
+     * the layer into plane and depth number.
      *
-     * @param side side of the cube along which the rotation is performed
-     * @param layer layer (depth) of the cube from the given side, along which the rotation is performed
-     * @return
+     * @param side  Side of the cube along which the rotation is performed.
+     * @param layer Layer (depth) of the cube from the given side, along which the rotation is performed.
+     * @return Pair of mapped plane and depth.
      */
     private Pair<Integer> getRotationToPairMapping(int side, int layer) {
         int plane;
@@ -293,7 +374,9 @@ public class Cube {
     }
 
     /**
-     * @return String representation of the cube's state
+     * This method serialized the cube.
+     *
+     * @return String representation of the cube's state.
      */
     private String getCubeRepresentation() {
         StringBuilder builder = new StringBuilder();
@@ -308,21 +391,21 @@ public class Cube {
     }
 
     /**
-     * Performs rotation within given ring.
+     * This method performs a rotation within given ring.
      *
-     * @param ring ring along which rotation is performed
+     * @param ring Ring along which rotation is performed.
      */
     private void performRingRotation(RingSquaresCollection ring) {
-        // perform swaps for the ring
+        // Perform swaps for the ring.
         for (int i = 0; i < ring.getComponentSize(); i++) {
-            // get coordinates of the first square to swap
+            // Get coordinates of the first square to swap.
             Coordinate currCoord = ring.calculateCoordinate(0, i);
             int currColor = cubeSquares[currCoord.getSideIdx()][currCoord.getRowIdx()][currCoord.getColumnIdx()];
             for (int j = 0; j < RingSquaresCollection.NUM_RING_COMPONENTS; j++) {
-                // get coordinates of the next square to swap
+                // Get coordinates of the next square to swap.
                 Coordinate nextCoord = ring.calculateCoordinate((j + 1) % RingSquaresCollection.NUM_RING_COMPONENTS, i);
                 int nextColor = cubeSquares[nextCoord.getSideIdx()][nextCoord.getRowIdx()][nextCoord.getColumnIdx()];
-                // perform the swap
+                // Perform the swap.
                 cubeSquares[nextCoord.getSideIdx()][nextCoord.getRowIdx()][nextCoord.getColumnIdx()] = currColor;
                 currColor = nextColor;
             }
@@ -330,20 +413,20 @@ public class Cube {
     }
 
     /**
-     * Performs one plane (one side) rotation using rings.
+     * This method performs one plane (one side) rotation using rings.
      *
-     * @param side side of the cube
+     * @param side Side of the cube.
      */
     private void performSideRotation(int side) {
-        // the most outer layer's ring components contain (size - 1) elements
+        // The most outer layer's ring components contain (size - 1) elements.
         int ringComponentSize = size - 1;
-        // denotes how next ring component's element can be derived from the previous one
+        // Denotes how next ring component's element can be derived from the previous one.
         int[] ringRowShifts = new int[]{0, 1, 0, -1};
         int[] ringColShifts = new int[]{1, 0, -1, 0};
-        // denotes the first elements in each ring's component
+        // Denotes the first elements in each ring's component.
         int[] currentRows = new int[]{0, 0, size - 1, size - 1};
         int[] currentCols = new int[]{0, size - 1, size - 1, 0};
-        // denotes how the next layer ring first component can be derived from the previous one
+        // Denotes how the next layer ring first component can be derived from the previous one.
         int[] entryRowShifts = new int[]{1, 1, -1, -1};
         int[] entryColshifts = new int[]{1, -1, -1, 1};
 
@@ -355,31 +438,31 @@ public class Cube {
                 int colIdx = currentCols[i] + layer * entryColshifts[i];
                 coords[i] = new Coordinate(side, rowIdx, colIdx);
             }
-            // create a ring and rotate the ring
+            // Create a ring and rotate the ring.
             RingSquaresCollection ring = new RingSquaresCollection(coords, ringRowShifts, ringColShifts, ringComponentSize);
             performRingRotation(ring);
-            // next layer's ring components contain 2 elements less than previuos layer's ring components
+            // Next layer's ring components contain 2 elements less than previuos layer's ring components.
             ringComponentSize -= 2;
             layer++;
         }
     }
 
     /**
-     * Performs the rotation along given side and layer
+     * This method performs a rotation along given side and layer.
      *
-     * @param side  side of the cube along which the rotation is performed
-     * @param layer layer (depth) of the cube from the given side, along which the rotation is performed
+     * @param side  Side of the cube along which the rotation is performed.
+     * @param layer Layer (depth) of the cube from the given side, along which the rotation is performed.
      */
     private void performRotation(int side, int layer) {
-        // find the ring of the outer rotation
+        // Find the ring of the outer rotation.
         RingSquaresCollection ring = determineRing(side, layer);
         performRingRotation(ring);
 
-        // if the rotation layer is the first or the last one, side of the cube must also be rotated
+        // If the rotation layer is the first or the last one, side of the cube must also be rotated.
         if (layer == 0) {
             performSideRotation(side);
         } else if (layer == this.size - 1) {
-            // 3 clockwise operations are equivalent to 1 counterclockwise
+            // 3 clockwise operations are equivalent to 1 counterclockwise.
             int oppositeSide = getOppositeSide(side);
             performSideRotation(oppositeSide);
             performSideRotation(oppositeSide);
@@ -388,10 +471,10 @@ public class Cube {
     }
 
     /**
-     * Returns the number of the opposite side
+     * This method maps side number to the opposite side's number.
      *
-     * @param side side of the cube, in range <0, 5>
-     * @return number of the opposite side
+     * @param side Side of the cube, in range <0, 5>.
+     * @return Number of the opposite side.
      */
     private int getOppositeSide(int side) {
         switch (side) {
@@ -411,12 +494,11 @@ public class Cube {
     }
 
     /**
-     * Pair of side and layer determine a few blocks of squares, which are called a ring. The function
-     * determines such a ring.
+     * Pair of side and layer determine a few blocks of squares, which are called a ring. This method determines such a ring.
      *
-     * @param side  id of side, in range <0, 5>
-     * @param layer id of layer, which determines the depth of the ring, in range <0, size-1>
-     * @return RingSquaresCollection which helps iterating over the ring
+     * @param side  Id of side, in range <0, 5>.
+     * @param layer Id of layer, which determines the depth of the ring, in range <0, size-1>.
+     * @return RingSquaresCollection which helps iterating over the ring.
      */
     private RingSquaresCollection determineRing(int side, int layer) {
         int[] sides, initialRows, initialCols, rowShifts, colShifts;
@@ -472,6 +554,70 @@ public class Cube {
         return new RingSquaresCollection(coords, rowShifts, colShifts, size);
     }
 
+    // to be deleted!
+    public void rotate(String rot) throws InterruptedException {
+        int faceno = 0;
+        int layer = 0;
+
+        switch (rot.charAt(0)) {
+            case 'F':
+                faceno = 2;
+                break;
+            case 'B':
+                faceno = 4;
+                break;
+            case 'U':
+                faceno = 0;
+                break;
+            case 'D':
+                faceno = 5;
+                break;
+            case 'L':
+                faceno = 1;
+                break;
+            case 'R':
+                faceno = 3;
+                break;
+            case 'M':
+                faceno = 1;
+                layer = 1;
+                break;
+            case 'E':
+                faceno = 5;
+                layer = 1;
+                break;
+            case 'S':
+                faceno = 2;
+                layer = 1;
+                break;
+            default: {
+                System.err.println("baaaad ;(");
+                break;
+            }
+        }
+
+        if (rot.length() > 1 && rot.charAt(1) == '\'') {
+            // System.out.println("prim detected: " + rot);
+            faceno = new int[]{5, 3, 4, 1, 2, 0}[faceno];
+            layer = size - 1 - layer;
+        }
+
+        rotate(faceno, layer);
+    }
+
+    // to be deleted!
+    public int[] count() {
+        int[] res = new int[6];
+        for (int i = 0; i < 6; ++i) {
+            for (int j = 0; j < size; j++) {
+                for (int k = 0; k < size; k++) {
+                    res[cubeSquares[i][j][k]]++;
+                }
+            }
+        }
+        return res;
+    }
+
     /**
      * Pair of side and layer determine 4 blocks of squares - the ring. This class helps iterating over the ring.
      */
@@ -525,45 +671,5 @@ public class Cube {
         public int getColumnIdx() {
             return columnIdx;
         }
-    }
-
-    // to be deleted!
-    public void rotate(String rot) throws InterruptedException {
-        int faceno = 0;
-        int layer = 0;
-
-        switch (rot.charAt(0)) {
-            case 'F': faceno = 2; break;
-            case 'B': faceno = 4; break;
-            case 'U': faceno = 0; break;
-            case 'D': faceno = 5; break;
-            case 'L': faceno = 1; break;
-            case 'R': faceno = 3; break;
-            case 'M': faceno = 1; layer = 1; break;
-            case 'E': faceno = 5; layer = 1; break;
-            case 'S': faceno = 2; layer = 1; break;
-            default: { System.err.println("baaaad ;("); break; }
-        }
-
-        if (rot.length() > 1 && rot.charAt(1) == '\'') {
-            // System.out.println("prim detected: " + rot);
-            faceno = new int[] {5, 3, 4, 1, 2, 0}[faceno];
-            layer = size - 1 - layer;
-        }
-
-        rotate(faceno, layer);
-    }
-
-    // to be deleted!
-    public int[] count() {
-        int[] res = new int[6];
-        for (int i = 0; i < 6; ++i) {
-            for (int j = 0; j < size; j++) {
-                for (int k = 0; k < size; k++) {
-                    res[cubeSquares[i][j][k]]++;
-                }
-            }
-        }
-        return res;
     }
 }

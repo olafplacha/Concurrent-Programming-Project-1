@@ -18,86 +18,6 @@ import static org.junit.jupiter.api.Assertions.*;
 public class CubeTest {
 
     /**
-     * Checks if each color of the cube's squares appears the same number of times.
-     *
-     * @param cube Cube to be validated.
-     * @return True iff each color of the cube's squares appears the same number of times.
-     */
-    boolean validateCubeByColorFrequency(Cube cube) throws InterruptedException {
-        // Get cube's representation.
-        String cubeSerialized = cube.show();
-        int numberOfSides = Cube.getNumSides();
-
-        // Count how many times each color appeared.
-        int[] counter = new int[numberOfSides];
-        for (int i = 0; i < cubeSerialized.length(); i++) {
-            counter[cubeSerialized.charAt(i) - '0']++;
-        }
-
-        // Return false if there is any color that appears more or less frequently than others.
-        int expected = cubeSerialized.length() / numberOfSides;
-        for (int i = 0; i < numberOfSides; i++) {
-            if (counter[i] != expected) return false;
-        }
-        return true;
-    }
-
-
-    /**
-     * Helper function which returns as soon as all provided futures are completed.
-     *
-     * @param futures List of futures to be completed.
-     */
-    void returnWhenAllFuturesAreCompleted(List<Future<?>> futures) {
-        int numberOfFutures = futures.size();
-        int numberOfCompletedFutures = 0;
-        boolean[] futureDone = new boolean[numberOfFutures];
-
-        while (true) {
-            for (int i = 0; i < numberOfFutures; i++) {
-                // If another future was completed, then increase the counter.
-                if (!futureDone[i] && futures.get(i).isDone()) {
-                    futureDone[i] = true;
-                    numberOfCompletedFutures++;
-                }
-                // If all futures were completed, then return.
-                if (numberOfCompletedFutures == numberOfFutures) {
-                    return;
-                }
-            }
-        }
-    }
-
-
-    /**
-     * Helper function which creates a cube with dummy work before and after rotation as well as before and after
-     * checking cube's state.
-     *
-     * @param size           Size of a cube to be created.
-     * @param loopIterations Number of loop iterations.
-     * @return A cube with described properties.
-     */
-    Cube cubeWithDummyWork(int size, int loopIterations) {
-        // Create dummy loops which imitate work on the cube.
-        BiConsumer<Integer, Integer> rotationWaiting = (integer1, integer2) -> {
-            int dummy = 0;
-            for (int i = 0; i < loopIterations; i++) {
-                dummy++;
-            }
-        };
-
-        Runnable showingWaiting = () -> {
-            int dummy = 0;
-            for (int i = 0; i < loopIterations; i++) {
-                dummy++;
-            }
-        };
-
-        return new Cube(size, rotationWaiting, rotationWaiting, showingWaiting, showingWaiting);
-    }
-
-
-    /**
      * It tests for rotations correctness.
      * <p>
      * If this test fails it means that rotations are not implemented properly.
@@ -129,6 +49,7 @@ public class CubeTest {
         String cubeAfterCyclicRotations = cube.show();
         assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
     }
+
 
     /**
      * It tests for rotations correctness.
@@ -221,8 +142,9 @@ public class CubeTest {
     /**
      * It tests for thread-safety.
      * <p>
-     * If this test fails it means that the solution is not thread-safe (either because the cube was shown in an inconsistent state
-     * while being updated, or the writes were done by conflicting writers at the same time and spoiled color consistency).
+     * If this test fails it means that the solution is not thread-safe either because:
+     * the cube was shown in an inconsistent state while being updated,
+     * or the writes were done by conflicting writers at the same time and spoiled color consistency.
      */
     @ParameterizedTest
     @ValueSource(ints = {1, 4, 8, 15, 32})
@@ -270,11 +192,12 @@ public class CubeTest {
         }
     }
 
+
     /**
      * It tests for non-conflicting writes concurrency.
      * <p>
-     * This test would fail if non-conflicting writes were not concurrent (because the number of unique write versions would be equal
-     * to the number of writes if the operations were done sequentially).
+     * If this test fails it means that non-conflicting writes were not concurrent, because:
+     * the number of unique write versions was equal to the number of writes.
      */
     @ParameterizedTest
     @ValueSource(ints = {4, 8, 15, 32})
@@ -351,15 +274,16 @@ public class CubeTest {
         assertTrue(concurrencyCoefficient > 1);
     }
 
+
     /**
      * It tests for liveness of read operations.
      * <p>
-     * This test would fail if there was no liveness of read operations (because the reading thread would never be allowed to
-     * get the cube's state while there was a heavy stream of write operations).
+     * If this test fails it means that there was no liveness of read operations, because:
+     * the reading thread was not allowed to get the cube's state while there was a heavy stream of write operations.
      */
     @ParameterizedTest
     @ValueSource(ints = {4, 8, 15, 32})
-    @DisplayName("Tests if there if liveness of read operations.")
+    @DisplayName("Tests if there is liveness of read operations.")
     void testLivenessOfReads(int size) {
         int numberOfRuns = 10;
         int numberOfWritingThreads = 10;
@@ -378,7 +302,8 @@ public class CubeTest {
                     while (true) {
                         try {
                             cube.rotate(randomSide, randomLayer);
-                        } catch (InterruptedException ignored) {
+                        } catch (InterruptedException e) {
+                            break;
                         }
                     }
                 }));
@@ -418,68 +343,301 @@ public class CubeTest {
     }
 
 
-//    @ParameterizedTest
-//    @ValueSource(ints = {64})
-//    @DisplayName("Tests sequential vs concurrent rotations and reads performance.")
-//    void testPerformance(int size) throws InterruptedException {
-//        int numberOfThreads = 32;
-//        int dummyWork = 1000000;
-//        int numberOfRotations = 100000;
-//        int numberOfShowings = 100000;
-//
-//        Cube cube = cubeWithDummyWork(size, dummyWork);
-//
-//        ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(numberOfThreads);
-//        Random randomNumberGenerator = new Random();
-//        List<Future<?>> futures = new ArrayList<>();
-//
-//        // start of concurrent operations test
-//        long start = System.currentTimeMillis();
-//        // generate concurrent rotations
-//        for (int i = 0; i < numberOfRotations; i++) {
-//            futures.add(taskExecutorThreads.submit(() -> {
-//                try {
-//                    cube.rotate(randomNumberGenerator.nextInt(Cube.getNumSides()), randomNumberGenerator.nextInt(size));
-//                } catch (InterruptedException e) {
-//                    e.printStackTrace();
-//                }
-//            }));
-//        }
-//
-//        // generate concurrent readings
-//        for (int i = 0; i < numberOfShowings; i++) {
-//            futures.add(taskExecutorThreads.submit(() -> {
-//                try {
-//                    cube.show();
-//                } catch (InterruptedException e) {
-//                    e.printStackTrace();
-//                }
-//            }));
-//        }
-//
-//        // wait untill all futures are completed
-//        returnWhenAllFuturesAreCompleted(futures);
-//        long concurrentTime = System.currentTimeMillis() - start;
-//        System.out.println("Concurrent: " + concurrentTime);
-//
-//        // start of sequential operations test
-//        start = System.currentTimeMillis();
-//        for (int i = 0; i < numberOfRotations; i++) {
-//            cube.rotate(randomNumberGenerator.nextInt(6), randomNumberGenerator.nextInt(size));
-//        }
-//        for (int i = 0; i < numberOfShowings; i++) {
-//            cube.show();
-//        }
-//        long sequentialTime = System.currentTimeMillis() - start;
-//        System.out.println("Sequential: " + sequentialTime);
-//
-//        // because of context switching, processes scheduling, number of CPU cores and other important factors, the
-//        // sequential approach might sometimes be faster (though on my computer the concurrent approach was faster)
-//        if (concurrentTime < sequentialTime) {
-//            System.out.println("Winner: concurrent");
-//        } else {
-//            System.out.println("Winner: sequential");
-//        }
-//    }
+    /**
+     * It tests for liveness of write operations.
+     * <p>
+     * If this test fails it means that there was no liveness of write operations, because:
+     * the writing thread was not allowed to modify the cube's state while there was a heavy stream of read operations.
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {4, 8, 15, 32})
+    @DisplayName("Tests if there is liveness of write operations.")
+    void testLivenessOfWrites(int size) {
+        int numberOfRuns = 10;
+        int numberOfReadingThreads = 10;
+        int timeoutSeconds = 5;
+        Random random = new Random();
 
+        for (int i = 0; i < numberOfRuns; i++) {
+            Cube cube = cubeWithDummyWork(size, 0);
+
+            // Create a collection of threads which perform infinite stream of reads.
+            List<Thread> threads = new ArrayList<>();
+            for (int j = 0; j < numberOfReadingThreads; j++) {
+                threads.add(new Thread(() -> {
+                    while (true) {
+                        try {
+                            cube.show();
+                        } catch (InterruptedException e) {
+                            break;
+                        }
+                    }
+                }));
+            }
+
+            for (Thread t : threads) {
+                t.start();
+            }
+
+            // Create a writing thread.
+            Thread writingThread = new Thread(() -> {
+                try {
+                    cube.rotate(random.nextInt(Cube.getNumSides()), random.nextInt(size));
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            });
+
+            writingThread.start();
+            long startTime = System.currentTimeMillis();
+            while (System.currentTimeMillis() < startTime + 1000 * timeoutSeconds) {
+                if (!writingThread.isAlive()) {
+                    // Writing thread was able to modify cube's state within a finite time.
+                    break;
+                }
+            }
+            // If the writing thread is still trying to modify the cube's state, then there is probably a problem of starvation.
+            if (writingThread.isAlive()) {
+                fail();
+            }
+
+            // Reading threads are no longer useful, interrupt them.
+            for (Thread t : threads) {
+                t.interrupt();
+            }
+        }
+    }
+
+
+    /**
+     * It tests for correctness of interrupts' implementation.
+     * <p>
+     * If this test fails it means that interrupts are not working properly, either because:
+     * target thread ignores interrupts,
+     * or interrupted thread leaves the cube in an inconsistent state.
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {4, 8, 15, 32})
+    @DisplayName("Tests if interrupts work properly.")
+    void testInterrupts(int size) throws InterruptedException {
+        int numberOfRuns = 100;
+        int timeoutSeconds = 5;
+        Random random = new Random();
+
+        for (int i = 0; i < numberOfRuns; i++) {
+            Cube cube = cubeWithDummyWork(size, 0);
+
+            Runnable infiniteReading = () -> {
+                while (true) {
+                    try {
+                        cube.show();
+                    } catch (InterruptedException e) {
+                        break;
+                    }
+                }
+            };
+
+            Runnable infiniteWriting = () -> {
+                while (true) {
+                    try {
+                        cube.rotate(random.nextInt(Cube.getNumSides()), random.nextInt(size));
+                    } catch (InterruptedException e) {
+                        break;
+                    }
+                }
+            };
+
+            // Create reading and writing threads that are working in an infinite loop.
+            Thread firstReader = new Thread(infiniteReading);
+            Thread secondReader = new Thread(infiniteReading);
+            Thread firstWriter = new Thread(infiniteWriting);
+            Thread secondWriter = new Thread(infiniteWriting);
+
+            firstReader.start();
+            secondReader.start();
+            firstWriter.start();
+            secondWriter.start();
+
+            // Let the threads do some work.
+            TimeUnit.MILLISECONDS.sleep(10);
+
+            // Interrupt one reader and one writer.
+            firstReader.interrupt();
+            firstWriter.interrupt();
+
+            long startTime = System.currentTimeMillis();
+            while (System.currentTimeMillis() < startTime + 1000 * timeoutSeconds) {
+                if (!firstReader.isAlive() && !firstWriter.isAlive()) {
+                    // Both the reader and the writer were successfully interrupted.
+                    break;
+                }
+            }
+
+            if (firstReader.isAlive() || firstWriter.isAlive()) {
+                // The interruption did not work.
+                System.err.println("Interruption timed out!");
+                fail();
+            }
+
+            // Check if the cube's state is valid after interruption.
+            if (!validateCubeByColorFrequency(cube)) {
+                System.err.println("Interruption left the cube in an invalid state!");
+                fail();
+            }
+
+            // Interrupt remaining threads.
+            secondReader.interrupt();
+            secondWriter.interrupt();
+        }
+    }
+
+
+    /**
+     * It tests for effectiveness of sequential and concurrent approach.
+     * <p>
+     * This test cannot fail, it is just for reference. Either of the approaches can yield better result, depending on
+     * various factors.
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {64, 128})
+    @DisplayName("Tests sequential and concurrent operations performance.")
+    void testPerformance(int size) throws InterruptedException {
+        int numberOfThreads = 32;
+        int dummyWork = 1000000;
+        int numberOfRotations = 100000;
+        int numberOfShowings = 100000;
+
+        Cube cube = cubeWithDummyWork(size, dummyWork);
+
+        ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(numberOfThreads);
+        Random randomNumberGenerator = new Random();
+        List<Future<?>> futures = new ArrayList<>();
+
+        // Start of concurrent operations test.
+        long start = System.currentTimeMillis();
+        // Generate concurrent rotations.
+        for (int i = 0; i < numberOfRotations; i++) {
+            futures.add(taskExecutorThreads.submit(() -> {
+                try {
+                    cube.rotate(randomNumberGenerator.nextInt(Cube.getNumSides()), randomNumberGenerator.nextInt(size));
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }));
+        }
+
+        // Generate concurrent readings.
+        for (int i = 0; i < numberOfShowings; i++) {
+            futures.add(taskExecutorThreads.submit(() -> {
+                try {
+                    cube.show();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }));
+        }
+
+        // Wait untill all futures are completed.
+        returnWhenAllFuturesAreCompleted(futures);
+        long concurrentTime = System.currentTimeMillis() - start;
+        System.out.println("Concurrent: " + concurrentTime);
+
+        // Start of sequential operations test.
+        start = System.currentTimeMillis();
+        for (int i = 0; i < numberOfRotations; i++) {
+            cube.rotate(randomNumberGenerator.nextInt(Cube.getNumSides()), randomNumberGenerator.nextInt(size));
+        }
+        for (int i = 0; i < numberOfShowings; i++) {
+            cube.show();
+        }
+        long sequentialTime = System.currentTimeMillis() - start;
+        System.out.println("Sequential: " + sequentialTime);
+
+        // Because of context switching, processes scheduling, number of CPU cores and other important factors, the
+        // sequential approach might sometimes be faster (though on my computer the concurrent approach was faster).
+        if (concurrentTime < sequentialTime) {
+            System.out.println("Winner: concurrent");
+        } else {
+            System.out.println("Winner: sequential");
+        }
+    }
+
+    /**
+     * Checks if each color of the cube's squares appears the same number of times.
+     *
+     * @param cube Cube to be validated.
+     * @return True iff each color of the cube's squares appears the same number of times.
+     */
+    boolean validateCubeByColorFrequency(Cube cube) throws InterruptedException {
+        // Get cube's representation.
+        String cubeSerialized = cube.show();
+        int numberOfSides = Cube.getNumSides();
+
+        // Count how many times each color appeared.
+        int[] counter = new int[numberOfSides];
+        for (int i = 0; i < cubeSerialized.length(); i++) {
+            counter[cubeSerialized.charAt(i) - '0']++;
+        }
+
+        // Return false if there is any color that appears more or less frequently than others.
+        int expected = cubeSerialized.length() / numberOfSides;
+        for (int i = 0; i < numberOfSides; i++) {
+            if (counter[i] != expected) return false;
+        }
+        return true;
+    }
+
+
+    /**
+     * Helper function which returns as soon as all provided futures are completed.
+     *
+     * @param futures List of futures to be completed.
+     */
+    void returnWhenAllFuturesAreCompleted(List<Future<?>> futures) {
+        int numberOfFutures = futures.size();
+        int numberOfCompletedFutures = 0;
+        boolean[] futureDone = new boolean[numberOfFutures];
+
+        while (true) {
+            for (int i = 0; i < numberOfFutures; i++) {
+                // If another future was completed, then increase the counter.
+                if (!futureDone[i] && futures.get(i).isDone()) {
+                    futureDone[i] = true;
+                    numberOfCompletedFutures++;
+                }
+                // If all futures were completed, then return.
+                if (numberOfCompletedFutures == numberOfFutures) {
+                    return;
+                }
+            }
+        }
+    }
+
+
+    /**
+     * Helper function which creates a cube with dummy work before and after rotation as well as before and after
+     * checking cube's state.
+     *
+     * @param size Size of a cube to be created.
+     * @param loopIterations Number of loop iterations.
+     * @return A cube with described properties.
+     */
+    Cube cubeWithDummyWork(int size, int loopIterations) {
+        // Create dummy loops which imitate work on the cube.
+        BiConsumer<Integer, Integer> rotationWaiting = (integer1, integer2) -> {
+            int dummy = 0;
+            for (int i = 0; i < loopIterations; i++) {
+                dummy++;
+            }
+        };
+
+        Runnable showingWaiting = () -> {
+            int dummy = 0;
+            for (int i = 0; i < loopIterations; i++) {
+                dummy++;
+            }
+        };
+
+        return new Cube(size, rotationWaiting, rotationWaiting, showingWaiting, showingWaiting);
+    }
 }
