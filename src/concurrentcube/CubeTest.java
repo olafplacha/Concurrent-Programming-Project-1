@@ -9,8 +9,9 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.BiConsumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -19,192 +20,36 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class CubeTest {
 
-    @ParameterizedTest
-    @ValueSource(ints = {1, 2, 3, 4, 5, 100, 201, 512})
-    @DisplayName("Ensures that sequential cyclic rotations does not change cube's state")
-    void testSequentialCycleRotations(int size) throws InterruptedException {
+    /**
+     * Checks if each color of the cube's squares appears the same number of times.
+     *
+     * @param cube Cube to be validated.
+     * @return True iff each color of the cube's squares appears the same number of times.
+     */
+    boolean validateCubeByColorFrequency(Cube cube) throws InterruptedException {
+        // Get cube's representation.
+        String cubeSerialized = cube.show();
+        int numberOfSides = Cube.getNumSides();
 
-        Cube cube = new Cube(size, (x, y) -> {
-        }, (x, y) -> {
-        }, () -> {
-        }, () -> {
-        });
-
-        // get initial cube's state
-        String cubeBeforeCyclicRotations = cube.show();
-
-        Random rand = new Random();
-        int numCyclicRotations = 1000;
-        for (int i = 0; i < numCyclicRotations; i++) {
-            // pick random side and layer for the cyclic rotation
-            int side = rand.nextInt(6);
-            int layer = rand.nextInt(size);
-            for (int j = 0; j < 4; j++) {
-                cube.rotate(side, layer);
-            }
+        // Count how many times each color appeared.
+        int[] counter = new int[numberOfSides];
+        for (int i = 0; i < cubeSerialized.length(); i++) {
+            counter[cubeSerialized.charAt(i) - '0']++;
         }
 
-        // get cube's state after many cyclic rotations
-        String cubeAfterCyclicRotations = cube.show();
-        assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
-    }
-
-    @ParameterizedTest
-    @ValueSource(ints = {1, 2, 3, 4, 5, 100, 201})
-    @DisplayName("Check if sequential rotations work properly on one magic rotations sequence")
-    void testSequentialSequenceOfRotations(int size) throws InterruptedException {
-        Cube cube = new Cube(size, (x, y) -> {
-        }, (x, y) -> {
-        }, () -> {
-        }, () -> {
-        });
-
-        // get initial cube's state
-        String cubeBeforeCyclicRotations = cube.show();
-
-        // regardless of the size of the cube, the following sequence of moves, repeated 1260 times
-        // must yield initial cube's configuration
-        // https://en.wikipedia.org/wiki/Rubik%27s_Cube_group
-        for (int i = 0; i < 1260; i++) {
-            cube.rotate(3, 0);
-            cube.rotate(0, 0);
-            cube.rotate(0, 0);
-            cube.rotate(5, 0);
-            cube.rotate(5, 0);
-            cube.rotate(5, 0);
-            cube.rotate(4, 0);
-            cube.rotate(5, 0);
-            cube.rotate(5, 0);
-            cube.rotate(5, 0);
-        }
-        String cubeAfterCyclicRotations = cube.show();
-        assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
-    }
-
-    boolean sameNumberOfDigits(String s) {
-        int[] counter = new int[6];
-        for (int i = 0; i < s.length(); i++) {
-            counter[s.charAt(i)-'0']++;
-        }
-        int expected = s.length() / 6;
-        for (int i = 0; i < 6; i++) {
+        // Return false if there is any color that appears more or less frequently than others.
+        int expected = cubeSerialized.length() / numberOfSides;
+        for (int i = 0; i < numberOfSides; i++) {
             if (counter[i] != expected) return false;
         }
         return true;
     }
 
-    @RepeatedTest(100)
-    @DisplayName("Test concurrent cyclic rotations.")
-    void testConcurrentThreadsSameRotation() throws InterruptedException, ExecutionException {
-        AtomicInteger a = new AtomicInteger(0);
-
-        Cube cube = new Cube(10, (x, y) -> { a.addAndGet(1);
-        }, (x, y) -> { a.addAndGet(1);
-        }, () -> {
-        }, () -> {
-        });
-
-        // get initial cube's state
-        String cubeBeforeCyclicRotations = cube.show();
-
-        List<Future<?>> futures = new ArrayList<>();
-        List<Boolean> done = new ArrayList<>();
-        List<Future<String>> cubeStates = new ArrayList<>();
-
-        int k = 10000;
-        ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(32);
-
-        for (int i = 0; i < k; i++) {
-            futures.add(taskExecutorThreads.submit(() -> {
-                try {
-                    cube.rotate(5, 0);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }));
-            done.add(false);
-        }
-
-        for (int i = 0; i < k; i++) {
-            cubeStates.add(taskExecutorThreads.submit(() -> {
-                try {
-                    return cube.show();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                    return "";
-                }
-            }));
-        }
-
-        for (int i = 0; i < k; i++) {
-            futures.add(taskExecutorThreads.submit(() -> {
-                try {
-                    cube.rotate(5, 1);
-                    cube.rotate(4, 9);
-                    cube.rotate(2, 0);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }));
-            done.add(false);
-        }
-
-        int doneCounter = 0;
-        int currIdx = 0;
-        while (true) {
-            if (!done.get(currIdx) && futures.get(currIdx).isDone()) {
-                try {
-                    futures.get(currIdx).get();
-                } catch (ExecutionException e) {
-                    e.printStackTrace();
-                }
-                done.set(currIdx, true);
-                doneCounter++;
-            }
-            if (doneCounter == done.size()) break;
-            currIdx = (currIdx + 1) % done.size();
-        }
-
-//        for (int i = 0; i < cubeStates.size(); i++) {
-//            String state = cubeStates.get(i).get();
-//            assertTrue(sameNumberOfDigits(state));
-//        }
-//
-//        String cubeAfterCyclicRotations = cube.show();
-//        assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
-    }
-
-    void showRep(String rep, int s) {
-        int c = 0;
-        for (int i = 0; i < 6; i++) {
-            for (int j = 0; j < s; j++) {
-                String a = "";
-                for (int k = 0; k < s; k++) {
-                    a += rep.charAt(c);
-                    c++;
-                }
-                System.out.println(a);
-            }
-            System.out.println();
-        }
-    }
-
-    @Test
-    void test() throws InterruptedException {
-        Cube cube = new Cube(3, (x, y) -> {
-        }, (x, y) -> {
-        }, () -> {
-        }, () -> {
-        });
-
-        cube.rotate(3, 0);
-        String rep = cube.show();
-        showRep(rep, 3);
-    }
 
     /**
-     * Helper function which returns as soon as all provided futures are completed
-     * @param futures list of futures to be completed
+     * Helper function which returns as soon as all provided futures are completed.
+     *
+     * @param futures List of futures to be completed.
      */
     void returnWhenAllFuturesAreCompleted(List<Future<?>> futures) {
         int numberOfFutures = futures.size();
@@ -213,12 +58,12 @@ public class CubeTest {
 
         while (true) {
             for (int i = 0; i < numberOfFutures; i++) {
-                // if another future was completed, increase the counter
+                // If another future was completed, then increase the counter.
                 if (!futureDone[i] && futures.get(i).isDone()) {
                     futureDone[i] = true;
                     numberOfCompletedFutures++;
                 }
-                // if all futures were completed, return
+                // If all futures were completed, then return.
                 if (numberOfCompletedFutures == numberOfFutures) {
                     return;
                 }
@@ -226,15 +71,17 @@ public class CubeTest {
         }
     }
 
+
     /**
      * Helper function which creates a cube with dummy work before and after rotation as well as before and after
-     * checking cube's state - it helps to see the superiority of concurrent approach over sequential one
-     * @param size size of cube to be created
-     * @param loopIterations number of loop iterations
-     * @return a cube with described properties
+     * checking cube's state.
+     *
+     * @param size           Size of a cube to be created.
+     * @param loopIterations Number of loop iterations.
+     * @return A cube with described properties.
      */
-    Cube createSimpleCubeWithDummyWork(int size, int loopIterations) {
-
+    Cube cubeWithDummyWork(int size, int loopIterations) {
+        // Create dummy loops which imitate work on the cube.
         BiConsumer<Integer, Integer> rotationWaiting = (integer1, integer2) -> {
             int dummy = 0;
             for (int i = 0; i < loopIterations; i++) {
@@ -252,37 +99,178 @@ public class CubeTest {
         return new Cube(size, rotationWaiting, rotationWaiting, showingWaiting, showingWaiting);
     }
 
-    /**
-     * Helper function checking if the number of squares is equal for each color of the cube
-     */
-    boolean checkIfEqualNumberOfSquaresOfEachColor(Cube cube) throws InterruptedException {
-        int size = cube.getSize();
-        int[] counterForEachColor = new int[size];
 
-        String cubeState = cube.show();
-        for (int i = 0; i < cubeState.length(); i++) {
-            counterForEachColor[cubeState.charAt(i) - '0']++;
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2, 3, 4, 5, 100, 201, 512})
+    @DisplayName("Tests if sequential cyclic rotations change cube's initial state.")
+    void testSequentialCycleRotations(int size) throws InterruptedException {
+        // Create a cube of various sizes.
+        Cube cube = cubeWithDummyWork(size, 0);
+
+        // Get initial cube's state.
+        String cubeBeforeCyclicRotations = cube.show();
+
+        Random rand = new Random();
+        int numCyclicRotations = 1000;
+        for (int i = 0; i < numCyclicRotations; i++) {
+            // Pick random side and layer for the cyclic rotation.
+            int side = rand.nextInt(Cube.getNumSides());
+            int layer = rand.nextInt(size);
+            // Rotate the cube four times by the same rotation.
+            for (int j = 0; j < 4; j++) {
+                cube.rotate(side, layer);
+            }
         }
 
-        for (int i = 0; i < 6; i++) {
-            if (counterForEachColor[i] != size * size) return false;
-        }
-        return true;
+        // Get cube's state after many cyclic rotations and assert that it is in the same state as before.
+        String cubeAfterCyclicRotations = cube.show();
+        assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
     }
 
 
-    @Test
-    @RepeatedTest(10)
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2, 3, 4, 5, 100, 201})
+    @DisplayName("Tests if sequential rotations work properly on one magic rotations sequence.")
+    void testSequentialSequenceOfRotations(int size) throws InterruptedException {
+        // Create a cube of various sizes.
+        Cube cube = cubeWithDummyWork(size, 0);
+
+        // Get initial cube's state.
+        String cubeBeforeCyclicRotations = cube.show();
+
+        // Regardless of the size of the cube, the following sequence of moves, repeated 1260 times must yield initial cube's state.
+        // https://en.wikipedia.org/wiki/Rubik%27s_Cube_group
+        for (int i = 0; i < 1260; i++) {
+            cube.rotate(3, 0);
+            cube.rotate(0, 0);
+            cube.rotate(0, 0);
+            cube.rotate(5, 0);
+            cube.rotate(5, 0);
+            cube.rotate(5, 0);
+            cube.rotate(4, 0);
+            cube.rotate(5, 0);
+            cube.rotate(5, 0);
+            cube.rotate(5, 0);
+        }
+        String cubeAfterCyclicRotations = cube.show();
+        assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
+    }
+
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 4, 8, 15, 32})
+    @DisplayName("Tests if random concurrent cyclic rotation change cube's initial state.")
+    void testConcurrentThreadsSameRotation(int size) throws InterruptedException {
+        int numberOfRuns = 100;
+        int numberOfTasks = 100;
+        int numberofThreads = 32;
+        int dummyWork = 1000000;
+
+        for (int i = 0; i < numberOfRuns; i++) {
+            // Create a cube of various sizes.
+            Cube cube = cubeWithDummyWork(size, dummyWork);
+
+            // Get initial cube's state.
+            String cubeBeforeConcurrentCyclicRotations = cube.show();
+
+            // Create a list for futures and a pool of threads.
+            List<Future<?>> futures = new ArrayList<>();
+            ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(numberofThreads);
+
+            // Randomly pick a side along which rotations will be performed.
+            Random random = new Random();
+            int randomSide = random.nextInt(Cube.getNumSides());
+
+            for (int j = 0; j < numberOfTasks; j++) {
+                futures.add(taskExecutorThreads.submit(() -> {
+                    // Randomly pick a layer along which rotations will be performed.
+                    int randomLayer = random.nextInt(size);
+                    try {
+                        cube.rotate(randomSide, randomLayer);
+                        cube.rotate(randomSide, randomLayer);
+                        cube.rotate(randomSide, randomLayer);
+                        cube.rotate(randomSide, randomLayer);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }));
+            }
+
+            // Wait until all tasks are done.
+            returnWhenAllFuturesAreCompleted(futures);
+
+            // Get cube's state after many cyclic rotations and assert that it is in the same state as before.
+            String cubeAfterConcurrentCyclicRotations = cube.show();
+            assertEquals(cubeBeforeConcurrentCyclicRotations, cubeAfterConcurrentCyclicRotations);
+        }
+    }
+
+
+    /**
+     * It tests for thread-safety.
+     *
+     * This test would fail if the solution was not thread-safe (because the cube was shown in a inconsistent state
+     * while being updated, or the writes were done by conflicting writers at the same time).
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {1, 4, 8, 15, 32})
+    @DisplayName("Tests if cube is always shown in a consistent state - number of squares of each color is equal.")
+    void testIfStateIsValidDuringConcurrentRotations(int size) throws InterruptedException {
+        int numberOfRuns = 10;
+        int numberOfTasks = 1000;
+        int numberofThreads = 8;
+        int dummyWork = 1000000;
+
+        for (int i = 0; i < numberOfRuns; i++) {
+            // Create a cube of various sizes.
+            Cube cube = cubeWithDummyWork(size, dummyWork);
+
+            // Create a list for futures and a pool of threads.
+            List<Future<?>> futures = new ArrayList<>();
+            ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(numberofThreads);
+
+            // Randomly pick a side along which rotations will be performed.
+            Random random = new Random();
+            int randomSide = random.nextInt(Cube.getNumSides());
+
+            for (int j = 0; j < numberofThreads; j++) {
+                futures.add(taskExecutorThreads.submit(() -> {
+                    for (int k = 0; k < numberOfTasks; k++) {
+                        // Randomly pick a layer along which rotations will be performed.
+                        int randomLayer = random.nextInt(size);
+                        try {
+                            cube.rotate(randomSide, randomLayer);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }));
+            }
+
+            // Create a thread which terminates as soon as all cube's rotations are done.
+            Thread completionCheckerThread = new Thread(() -> returnWhenAllFuturesAreCompleted(futures));
+            completionCheckerThread.start();
+
+            while (completionCheckerThread.isAlive()) {
+                // Check cube's state while rotations are being done on the cube.
+                assertTrue(validateCubeByColorFrequency(cube));
+            }
+        }
+    }
+
+
+    @ParameterizedTest
+    @ValueSource(ints = {64})
     @DisplayName("Tests sequential vs concurrent rotations and reads performance.")
-    void testPerformance() throws InterruptedException {
+    void testPerformance(int size) throws InterruptedException {
+        int numberofThreads = 32;
+        int dummyWork = 1000000;
+        int numberOfRotations = 100000;
+        int numberOfShowings = 100000;
 
-        final int size = 32;
-        final int dummyWork = 1000000000;
-        int numberOfRotations = 1000000;
-        int numberOfShowings = 1000000;
+        Cube cube = cubeWithDummyWork(size, dummyWork);
 
-        Cube cube = createSimpleCubeWithDummyWork(size, dummyWork);
-        ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(8);
+        ExecutorService taskExecutorThreads = Executors.newFixedThreadPool(numberofThreads);
         Random randomNumberGenerator = new Random();
         List<Future<?>> futures = new ArrayList<>();
 
@@ -292,14 +280,14 @@ public class CubeTest {
         for (int i = 0; i < numberOfRotations; i++) {
             futures.add(taskExecutorThreads.submit(() -> {
                 try {
-                    cube.rotate(randomNumberGenerator.nextInt(6), randomNumberGenerator.nextInt(size));
+                    cube.rotate(randomNumberGenerator.nextInt(Cube.getNumSides()), randomNumberGenerator.nextInt(size));
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
             }));
         }
 
-        // generate consurrent readings
+        // generate concurrent readings
         for (int i = 0; i < numberOfShowings; i++) {
             futures.add(taskExecutorThreads.submit(() -> {
                 try {
@@ -315,9 +303,6 @@ public class CubeTest {
         long concurrentTime = System.currentTimeMillis() - start;
         System.out.println("Concurrent: " + concurrentTime);
 
-        // assert that concurrency errors did not make any color disappear
-        assertTrue(checkIfEqualNumberOfSquaresOfEachColor(cube));
-
         // start of sequential operations test
         start = System.currentTimeMillis();
         for (int i = 0; i < numberOfRotations; i++) {
@@ -330,15 +315,13 @@ public class CubeTest {
         System.out.println("Sequential: " + sequentialTime);
 
         // because of context switching, processes scheduling, number of CPU cores and other important factors, the
-        // sequantial approach might sometimes be faster (though on my computer the concurrent approach was faster)
+        // sequential approach might sometimes be faster (though on my computer the concurrent approach was faster)
         if (concurrentTime < sequentialTime) {
             System.out.println("Winner: concurrent");
-        }
-        else {
+        } else {
             System.out.println("Winner: sequential");
         }
     }
-
 
 
 }
