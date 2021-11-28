@@ -1,6 +1,6 @@
-package concurrentcube;
+package utils;
 
-class Pair<T> {
+public class Pair<T> {
     private final T m_first;
     private final T m_second;
 

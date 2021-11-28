@@ -1,5 +1,9 @@
 package concurrentcube;
 
+import utils.Coordinate;
+import utils.Pair;
+import utils.RingSquaresCollection;
+
 import java.util.concurrent.Semaphore;
 import java.util.function.BiConsumer;
 
@@ -83,7 +87,6 @@ public class Cube {
         lock = new Semaphore(1, true);
     }
 
-
     /**
      * This method returns the number of sides of the cube.
      *
@@ -92,7 +95,6 @@ public class Cube {
     public static int getNumSides() {
         return NUM_SIDES;
     }
-
 
     /**
      * This method performs a read on the cube. This method has been tested for thread-safety and liveness.
@@ -109,7 +111,6 @@ public class Cube {
         return cubeRepresentation;
     }
 
-
     /**
      * Performs a rotation on the cube. This method has been tested for thread-safety and liveness.
      *
@@ -125,7 +126,6 @@ public class Cube {
         criticalSectionRotate(side, layer);
         exitSectionRotate();
     }
-
 
     /**
      * This method returns as soon as the reading thread, which invoked it, is allowed to access the cube.
@@ -161,7 +161,6 @@ public class Cube {
         }
     }
 
-
     /**
      * This method performs all the operations which are critical to getting serialized cube.
      *
@@ -173,7 +172,6 @@ public class Cube {
         afterShowing.run();
         return cubeRepresentation;
     }
-
 
     /**
      * This method performs all the operations needed to stop accessing the cube by the reader.
@@ -194,7 +192,6 @@ public class Cube {
             lock.release();
         }
     }
-
 
     /**
      * This method returns as soon as the writing thread, which invoked it, is allowed to access the cube.
@@ -235,7 +232,6 @@ public class Cube {
         }
     }
 
-
     /**
      * This method performs all the operations which are critical to rotating the cube.
      *
@@ -247,7 +243,6 @@ public class Cube {
         performRotation(side, layer);
         afterRotation.accept(side, layer);
     }
-
 
     /**
      * This method performs all the operations needed to stop accessing the cube by the writer.
@@ -276,7 +271,6 @@ public class Cube {
         }
     }
 
-
     /**
      * This method scans writing threads waiting on the group semaphore and wakes up the first thread, whose depth
      * (layer which the thread wants to modify) is equal to or greater than start parameter.
@@ -300,7 +294,6 @@ public class Cube {
         // Return false as the method hasn't waken anyone up.
         return false;
     }
-
 
     /**
      * This method updates the counter denoting the index of writers group, which will be waken up from the group semaphore.
@@ -330,7 +323,6 @@ public class Cube {
         }
         return numActive > 0;
     }
-
 
     /**
      * Rotations along two different sides may be modifying the cube in the same plane. This method maps the side and
@@ -401,9 +393,9 @@ public class Cube {
             // Get coordinates of the first square to swap.
             Coordinate currCoord = ring.calculateCoordinate(0, i);
             int currColor = cubeSquares[currCoord.getSideIdx()][currCoord.getRowIdx()][currCoord.getColumnIdx()];
-            for (int j = 0; j < RingSquaresCollection.NUM_RING_COMPONENTS; j++) {
+            for (int j = 0; j < RingSquaresCollection.getNumberOfRingComponents(); j++) {
                 // Get coordinates of the next square to swap.
-                Coordinate nextCoord = ring.calculateCoordinate((j + 1) % RingSquaresCollection.NUM_RING_COMPONENTS, i);
+                Coordinate nextCoord = ring.calculateCoordinate((j + 1) % RingSquaresCollection.getNumberOfRingComponents(), i);
                 int nextColor = cubeSquares[nextCoord.getSideIdx()][nextCoord.getRowIdx()][nextCoord.getColumnIdx()];
                 // Perform the swap.
                 cubeSquares[nextCoord.getSideIdx()][nextCoord.getRowIdx()][nextCoord.getColumnIdx()] = currColor;
@@ -433,7 +425,7 @@ public class Cube {
         int layer = 0;
         while (ringComponentSize > 0) {
             Coordinate[] coords = new Coordinate[4];
-            for (int i = 0; i < RingSquaresCollection.NUM_RING_COMPONENTS; i++) {
+            for (int i = 0; i < RingSquaresCollection.getNumberOfRingComponents(); i++) {
                 int rowIdx = currentRows[i] + layer * entryRowShifts[i];
                 int colIdx = currentCols[i] + layer * entryColshifts[i];
                 coords[i] = new Coordinate(side, rowIdx, colIdx);
@@ -548,7 +540,7 @@ public class Cube {
                 break;
         }
         Coordinate[] coords = new Coordinate[4];
-        for (int i = 0; i < RingSquaresCollection.NUM_RING_COMPONENTS; i++) {
+        for (int i = 0; i < RingSquaresCollection.getNumberOfRingComponents(); i++) {
             coords[i] = new Coordinate(sides[i], initialRows[i], initialCols[i]);
         }
         return new RingSquaresCollection(coords, rowShifts, colShifts, size);
@@ -618,58 +610,5 @@ public class Cube {
         return res;
     }
 
-    /**
-     * Pair of side and layer determine 4 blocks of squares - the ring. This class helps iterating over the ring.
-     */
-    private static class RingSquaresCollection {
-        static final int NUM_RING_COMPONENTS = 4;
-        private final Coordinate[] coords;
-        private final int[] rowShifts;
-        private final int[] colShifts;
-        private final int componentSize;
 
-        public RingSquaresCollection(Coordinate[] coords, int[] rowShifts, int[] colShifts, int componentSize) {
-            this.coords = coords;
-            this.rowShifts = rowShifts;
-            this.colShifts = colShifts;
-            this.componentSize = componentSize;
-        }
-
-        public Coordinate calculateCoordinate(int pos, int stepNum) {
-            int newRowIdx = coords[pos].getRowIdx() + stepNum * rowShifts[pos];
-            int newColIdx = coords[pos].getColumnIdx() + stepNum * colShifts[pos];
-            return new Coordinate(coords[pos].sideIdx, newRowIdx, newColIdx);
-        }
-
-        public int getComponentSize() {
-            return this.componentSize;
-        }
-    }
-
-    /**
-     * Represents a position of a square in a cube
-     */
-    private static class Coordinate {
-        private final int sideIdx;
-        private final int rowIdx;
-        private final int columnIdx;
-
-        public Coordinate(int sideIdx, int rowIdx, int columnIdx) {
-            this.sideIdx = sideIdx;
-            this.rowIdx = rowIdx;
-            this.columnIdx = columnIdx;
-        }
-
-        public int getSideIdx() {
-            return sideIdx;
-        }
-
-        public int getRowIdx() {
-            return rowIdx;
-        }
-
-        public int getColumnIdx() {
-            return columnIdx;
-        }
-    }
 }
