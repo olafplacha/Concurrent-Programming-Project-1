@@ -1,5 +1,8 @@
 package utils;
 
+/**
+ * This is a helper class which stores two elements of the same type.
+ */
 public class Pair<T> {
     private final T m_first;
     private final T m_second;

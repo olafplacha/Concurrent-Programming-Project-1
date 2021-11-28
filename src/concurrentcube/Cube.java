@@ -11,6 +11,8 @@ import java.util.function.BiConsumer;
 /**
  * This is an implementation of Rubik's Cube, which enables non-conflicting operations to be done concurrently.
  * Thread synchronization was developed using semaphores. Implementation has been tested for thread-safety and liveness.
+ *
+ * @author Olaf Placha
  */
 public class Cube {
     private static final int NUM_SIDES = 6;

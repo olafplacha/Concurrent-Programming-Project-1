@@ -1,7 +1,7 @@
 package utils;
 
 /**
- * Represents a position of a square in a cube
+ * This is a helper class which represents coordinates within a cube.
  */
 public class Coordinate {
     private final int sideIdx;
