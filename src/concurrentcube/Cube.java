@@ -10,8 +10,8 @@ public class Cube {
     private final BiConsumer<Integer, Integer> afterRotation;
     private final Runnable beforeShowing;
     private final Runnable afterShowing;
-    private final int NUM_SIDES = 6;
-    private final int NUM_PLANES = 3;
+    private static final int NUM_SIDES = 6;
+    private static final int NUM_PLANES = 3;
 
     // variables used for synchronization
     // for every plane and for every depth within the plane, there is one semaphore
@@ -71,6 +71,8 @@ public class Cube {
     public int getSize() {
         return size;
     }
+
+    public static int getNumSides() { return NUM_SIDES; }
 
     public String show() throws InterruptedException {
 
