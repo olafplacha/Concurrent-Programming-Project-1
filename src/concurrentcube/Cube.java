@@ -100,17 +100,8 @@ public class Cube {
         if (activeModifiersCounter > 0 || isAnyModifierWaiting()) {
             waitingReadersCounter++;
             lock.release();
-            try {
-                // wait on a semaphore
-                readingSemaphore.acquire();
-            } catch (InterruptedException e) {
-                // if the thread is interruped when waiting for the access to the critical section, then a clean up is needed
-                lock.acquireUninterruptibly();
-                // the thread is no longer waiting
-                waitingReadersCounter--;
-                lock.release();
-                throw e;
-            }
+            // wait on a semaphore
+            readingSemaphore.acquireUninterruptibly();
             // at this point the reading thread is waken up, ready to perform reading
             waitingReadersCounter--;
         }
@@ -123,6 +114,11 @@ public class Cube {
         else {
             // no more reading threads are waiting, give back the lock
             lock.release();
+        }
+        // If current thread was interrupted, then do a clean up and throw an exception.
+        if (Thread.currentThread().isInterrupted()) {
+            exitSectionShow();
+            throw new InterruptedException();
         }
     }
 
@@ -177,11 +173,9 @@ public class Cube {
             activeModifiersCounter++;
             lock.release();
         }
-        // Check interruption flag.
+        // If current thread was interrupted, then do a clean up and throw an exception.
         if (Thread.currentThread().isInterrupted()) {
-            // Clean up.
             exitSectionRotate();
-            System.out.println("elo");
             throw new InterruptedException();
         }
     }
