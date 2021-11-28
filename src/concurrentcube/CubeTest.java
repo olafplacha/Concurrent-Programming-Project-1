@@ -50,7 +50,6 @@ public class CubeTest {
         assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
     }
 
-
     /**
      * It tests for rotations correctness.
      * <p>
@@ -83,7 +82,6 @@ public class CubeTest {
         String cubeAfterCyclicRotations = cube.show();
         assertEquals(cubeBeforeCyclicRotations, cubeAfterCyclicRotations);
     }
-
 
     /**
      * It tests for rotations correctness and thread-safety.
@@ -138,7 +136,6 @@ public class CubeTest {
         }
     }
 
-
     /**
      * It tests for thread-safety.
      * <p>
@@ -191,7 +188,6 @@ public class CubeTest {
             }
         }
     }
-
 
     /**
      * It tests for non-conflicting writes concurrency.
@@ -274,7 +270,6 @@ public class CubeTest {
         assertTrue(concurrencyCoefficient > 1);
     }
 
-
     /**
      * It tests for liveness of read operations.
      * <p>
@@ -342,7 +337,6 @@ public class CubeTest {
         }
     }
 
-
     /**
      * It tests for liveness of write operations.
      * <p>
@@ -407,7 +401,6 @@ public class CubeTest {
             }
         }
     }
-
 
     /**
      * It tests for correctness of interrupts' implementation.
@@ -490,7 +483,6 @@ public class CubeTest {
             secondWriter.interrupt();
         }
     }
-
 
     /**
      * It tests for effectiveness of sequential and concurrent approach.
@@ -587,7 +579,6 @@ public class CubeTest {
         return true;
     }
 
-
     /**
      * Helper function which returns as soon as all provided futures are completed.
      *
@@ -613,12 +604,11 @@ public class CubeTest {
         }
     }
 
-
     /**
      * Helper function which creates a cube with dummy work before and after rotation as well as before and after
      * checking cube's state.
      *
-     * @param size Size of a cube to be created.
+     * @param size           Size of a cube to be created.
      * @param loopIterations Number of loop iterations.
      * @return A cube with described properties.
      */
